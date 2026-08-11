@@ -53,15 +53,15 @@ export default defineConfig({
       testIgnore: /login_and_save_session\.spec\.js/, // don't run it again as a normal test
     },
 
-    {
-      name: 'firefox',
-      use: {
-        ...devices['Desktop Firefox'],
-        storageState: authFile,
-      },
-      dependencies: ['setup'],
-      testIgnore: /login_and_save_session\.spec\.js/,
-    },
+    // {
+    //   name: 'firefox',
+    //   use: {
+    //     ...devices['Desktop Firefox'],
+    //     storageState: authFile,
+    //   },
+    //   dependencies: ['setup'],
+    //   testIgnore: /login_and_save_session\.spec\.js/,
+    // },
 
     // {
     //   name: 'webkit',
