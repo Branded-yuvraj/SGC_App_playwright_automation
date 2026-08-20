@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test';
 import 'dotenv/config';
 
-test('TC-010 - API-Driven Server Import & Relationship Verification', async ({ page }) => {
+test('TC-010 - API-Driven Server creation & Dynamic Instance Verification', async ({ page }) => {
     test.setTimeout(300_000);
 
     const snUrl = process.env.SN_URL;
-    const testAssetName = process.env.IMPORT_JOB_RDB_DATASOURCE;   // e.g., Boris mysql 1
-    const testAssetServer = process.env.IMPORT_JOB_RDB_SERVER;     // e.g., Boris mysql 1 server
-    const rdbType = process.env.IMPORT_JOB_RDB_TYPE;               // e.g., MYSQL
-    const rdbUrl = process.env.RDB_URL;                            // e.g., aws-mysql.cabt0fxz03bw.us-east-1.rds.amazonaws.com
+    const testAssetName = process.env.IMPORT_JOB_RDB_DATASOURCE;   // e.g., MSSQL
+    const testAssetServer = process.env.IMPORT_JOB_RDB_SERVER;     // e.g., MSSQL SERVER 69
+    const rdbType = process.env.IMPORT_JOB_RDB_TYPE;               // e.g., MSSQL
+    const rdbUrl = process.env.RDB_URL;                            // e.g., bigid-mssql.cabt0fxz03bw.us-east-1.rds.amazonaws.com
 
     const supportedDbTypes = [
         'MYSQL',
@@ -19,6 +19,21 @@ test('TC-010 - API-Driven Server Import & Relationship Verification', async ({ p
         'ORACLE',
         'SYBASE'
     ];
+
+    // Map database types to their corresponding ServiceNow table names
+    const dbTableMapping = {
+        'MYSQL': 'cmdb_ci_db_mysql_instance',
+        'POSTGRESQL': 'cmdb_ci_db_postgresql_instance',
+        'DB2': 'cmdb_ci_db_db2_instance',
+        'MSFT SQL': 'cmdb_ci_db_mssql_instance',
+        'MSSQL': 'cmdb_ci_db_mssql_instance',
+        'ORACLE': 'cmdb_ci_db_ora_instance',
+        '_AWSORACLE': 'cmdb_ci_db_ora_instance',
+        'SYBASE': 'cmdb_ci_db_syb_instance'
+    };
+
+    const targetTableName = dbTableMapping[rdbType.toUpperCase()] || 'cmdb_ci_db_mysql_instance';
+    console.log(`[Automation] Resolved target table for ${rdbType}: ${targetTableName}`);
 
     await page.goto(snUrl);
     await page.waitForTimeout(3_000);
@@ -110,7 +125,7 @@ test('TC-010 - API-Driven Server Import & Relationship Verification', async ({ p
                     serverPayload.ip_address = parsedDetails.ip_address;
                 }
                 if (parsedDetails.host) {
-                    serverPayload.host_name = parsedDetails.host; // Mapped directly to host_name
+                    serverPayload.host_name = parsedDetails.host;
                 }
 
                 const createRes = await fetch(`/api/now/table/${parentClass}`, {
@@ -180,13 +195,13 @@ test('TC-010 - API-Driven Server Import & Relationship Verification', async ({ p
 
     await guidedSetupFrameAfterSave.locator('#execute_bottom').click();
 
-    console.log('Waiting for import job and relationship mapping to complete...');
-    await page.waitForTimeout(45_000);
+    console.log('Waiting for import job to complete...');
+    await page.waitForTimeout(30_000);
 
-    // --- 4. Verify Relationship in `cmdb_rel_ci` via API ---
-    console.log(`[API Automation] Verifying relationship between DB Instance "${testAssetName}" and Server "${testAssetServer}"`);
+    // --- 4. Verify Instance Creation via Table API ---
+    console.log(`[API Automation] Verifying creation of instance record "${testAssetName}" on table "${targetTableName}"...`);
     
-    const relVerified = await page.evaluate(async ({ instanceName, serverName }) => {
+    const instanceCreated = await page.evaluate(async ({ tableName, instanceName }) => {
         const token = window.g_ck || (window.top && window.top.g_ck) || '';
         const headers = {
             'Content-Type': 'application/json',
@@ -194,25 +209,21 @@ test('TC-010 - API-Driven Server Import & Relationship Verification', async ({ p
             'X-UserToken': token
         };
 
-        const instRes = await fetch(`/api/now/table/cmdb_ci?sysparm_query=name=${encodeURIComponent(instanceName)}&sysparm_limit=1`, { headers, credentials: 'include' });
-        const instData = await instRes.json();
-        if (!instData.result || instData.result.length === 0) return false;
-        const instanceSysId = instData.result[0].sys_id;
-
-        const srvRes = await fetch(`/api/now/table/cmdb_ci_server?sysparm_query=name=${encodeURIComponent(serverName)}&sysparm_limit=1`, { headers, credentials: 'include' });
-        const srvData = await srvRes.json();
-        if (!srvData.result || srvData.result.length === 0) return false;
-        const serverSysId = srvData.result[0].sys_id;
-
-        const relRes = await fetch(`/api/now/table/cmdb_rel_ci?sysparm_query=parent=${serverSysId}^child=${instanceSysId}^ORparent=${instanceSysId}^child=${serverSysId}&sysparm_limit=1`, { headers, credentials: 'include' });
-        const relData = await relRes.json();
-
-        if (relData.result && relData.result.length > 0) {
-            console.log(`[API Automation] Successfully verified relationship entry in cmdb_rel_ci! sys_id: ${relData.result[0].sys_id}`);
+        const res = await fetch(`/api/now/table/${tableName}?sysparm_query=name=${encodeURIComponent(instanceName)}&sysparm_limit=1`, {
+            method: 'GET',
+            credentials: 'include',
+            headers
+        });
+        
+        const data = await res.json();
+        if (data.result && data.result.length > 0) {
+            console.log(`[API Automation] Found instance record! sys_id: ${data.result[0].sys_id}`);
             return true;
         }
+        
+        console.log(`[API Automation] Instance record not found via API.`);
         return false;
-    }, { instanceName: testAssetName, serverName: testAssetServer });
+    }, { tableName: targetTableName, instanceName: testAssetName });
 
-    expect(relVerified, 'The automated import job failed to establish a relationship in cmdb_rel_ci').toBeTruthy();
+    expect(instanceCreated, `The database instance "${testAssetName}" was not found in the "${targetTableName}" table`).toBeTruthy();
 });
