@@ -1,14 +1,29 @@
 import { test, expect } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
+import { parse } from 'csv-parse/sync';
 import 'dotenv/config';
 
+// 1. Read and parse the Master CSV file at startup
+const csvFilePath = path.join(__dirname, '../test-data/dataSource.csv');
+const allRecords = parse(fs.readFileSync(csvFilePath, 'utf8'), {
+    columns: true,
+    skip_empty_lines: true,
+});
+
+// 2. FILTER records for Script 16
+const records = allRecords.filter(row => row.SCRIPT_NO === '16');
+
+// 3. Loop through each row and register tests dynamically at the top level
+for (const row of records) {
 test('Logical Datacenter export workflow via API', async ({ page }) => {
     test.setTimeout(480_000);
 
     const snUrl = process.env.SN_URL;
-    const dataSourceName = process.env.EXPORT_LDC_DATASOURCE;         // e.g. dev69420_s3_host
-    const logicalDatacenterName = process.env.EXPORT_LDC_DATACENTER;  // e.g. dev69420_ldc
-    const tableName = process.env.EXPORT_LDC_CI_CLASS;                // e.g. cmdb_ci_aws_s3_endpoint
-    const storageType = process.env.EXPORT_LDC_STORAGE_TYPE || (tableName === 'cmdb_ci_file_system_smb' ? 'smb_v2' : 'nfs');
+    const dataSourceName = row.EXPORT_LDC_DATASOURCE;         // e.g. dev69420_s3_host
+    const logicalDatacenterName = row.EXPORT_LDC_DATACENTER;  // e.g. dev69420_ldc
+    const tableName = row.EXPORT_LDC_CI_CLASS;                // e.g. cmdb_ci_aws_s3_endpoint
+    const storageType = row.EXPORT_STORAGE_TYPE || (tableName === 'cmdb_ci_file_system_smb' ? 'smb_v2' : 'nfs_v2');
 
     const expectedLogExisting = 'Service Graph Connector for BigID: BigIDSyncDSFunctions -> exportDataSource -> Finished Exporting Data Sources : Exported [0] and Updated [1]';
 
@@ -247,3 +262,4 @@ test('Logical Datacenter export workflow via API', async ({ page }) => {
         'No successful export log message was found'
     ).toBeTruthy();
 });
+}

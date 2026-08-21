@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import 'dotenv/config';
 
-test('TC-008 - Leave Import Data Sources empty', async ({ page }) => {
+test('Leave Import Data Sources empty', async ({ page }) => {
     test.setTimeout(300_000); // 5 minutes
 
     await page.goto(process.env.SN_URL);

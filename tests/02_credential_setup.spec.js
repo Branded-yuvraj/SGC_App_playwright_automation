@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import 'dotenv/config';
 
-test('TC-001: Save valid BigID credentials', async ({ page }) => {
+test('Save valid BigID credentials', async ({ page }) => {
   test.setTimeout(120_000); // this flow is slow (guided setup + workflow studio) — give it 2 min
 
   // --- Navigate to the BigID Guided Setup via global search ---

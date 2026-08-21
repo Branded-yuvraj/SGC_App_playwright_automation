@@ -1,13 +1,28 @@
 import { test, expect } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
+import { parse } from 'csv-parse/sync';
 import 'dotenv/config';
 
+// 1. Read and parse the Master CSV file at startup
+const csvFilePath = path.join(__dirname, '../test-data/dataSource.csv');
+const allRecords = parse(fs.readFileSync(csvFilePath, 'utf8'), {
+    columns: true,
+    skip_empty_lines: true,
+});
+
+// 2. FILTER records for Script 15
+const records = allRecords.filter(row => row.SCRIPT_NO === '15');
+
+// 3. Loop through each row and register tests dynamically at the top level
+for (const row of records) {
 test('Server and Instance export workflow via API', async ({ page }) => {
     test.setTimeout(180_000);
 
     const snUrl = process.env.SN_URL;
-    const instanceName = process.env.EXPORT_MYSQL_INSTANCE; // e.g. dev69420_oracle_pdb_instance
-    const serverName = process.env.EXPORT_MYSQL_SERVER;     // e.g. dev69420_oracle_pdb_server
-    const tableName = process.env.EXPORT_MYSQL_CI_CLASS;    // cmdb_ci_db_ora_pdb_instance
+    const instanceName = row.EXPORT_SERVER_INSTANCE; // e.g. dev69420_oracle_pdb_instance
+    const serverName = row.EXPORT_SERVER_NAME;     // e.g. dev69420_oracle_pdb_server
+    const tableName = row.EXPORT_SERVER_CI_CLASS;    // cmdb_ci_db_ora_pdb_instance
 
     const isOraclePdb = tableName === 'cmdb_ci_db_ora_pdb_instance';
     
@@ -241,3 +256,4 @@ test('Server and Instance export workflow via API', async ({ page }) => {
         'Neither the new-export nor existing-update log message was found'
     ).toBeTruthy();
 });
+}

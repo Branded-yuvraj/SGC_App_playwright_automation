@@ -1,0 +1,11 @@
+SCRIPT_NO,CLASSIFICATION_GROUP_NAME,IMPORT_JOB_RDB_DATASOURCE,IMPORT_JOB_RDB_SERVER,IMPORT_JOB_RDB_TYPE,RDB_URL,IMPORT_JOB_LDC_DATASOURCE,IMPORT_JOB_LDC,IMPORT_JOB_LDC_TYPE,IMPORT_JOB_LDC_DNS_DOMAIN,IMPORT_JOB_SS_DATASOURCE,IMPORT_JOB_SS,IMPORT_JOB_SS_TYPE,IMPORT_JOB_SS_IP_ADDRESS,EXPORT_SERVER_INSTANCE,EXPORT_SERVER_NAME,EXPORT_SERVER_CI_CLASS,EXPORT_LDC_DATASOURCE,EXPORT_LDC_DATACENTER,EXPORT_LDC_CI_CLASS,EXPORT_STORAGESERVER_DATASOURCE,EXPORT_STORAGESERVER_SERVER,EXPORT_STORAGE_TYPE,EXPORT_FILESHARE_KEYWORD
+03,Sensitivity,,,,,,,,,,,,,,,,,,,,,,
+03,Confidential Data Sources,,,,,,,,,,,,,,,,,,,,,,
+04,GG,,,,,,,,,,,,,,,,,,,,,,
+04,Random data,,,,,,,,,,,,,,,,,,,,,,
+07,,MSSQL,MSSQL SERVER 69,MSSQL,bigid-mssql.cabt0fxz03bw.us-east-1.rds.amazonaws.com,,,,,,,,,,,,,,,,,,
+08,,,,,,smb first,SMB69 LOGICAL DATACENTER,SMB,34.198.0.183,,,,,,,,,,,,,,
+09,,,,,,,,,,smb - Sensitive Data,SMB STORAGE SERVER69,SMB,34.198.0.183,,,,,,,,,,keyword1
+15,,,,,,,,,,,,,,dev69420_mssql2_instance,dev69420_mssql2_server,cmdb_ci_db_mssql_instance,,,,,,,
+16,,,,,,,,,,,,,,,,,dev69420_s3_second_instance,dev69420_s3_second_logical_dc,cmdb_ci_aws_s3_endpoint,,,,
+17,,,,,,,,,,,,,,,,,,,,dev69420_nfs4_instance,dev69420_nfs4_server,nfs,nfskeyword

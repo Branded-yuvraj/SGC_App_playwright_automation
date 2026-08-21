@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import 'dotenv/config';
 
-test('TC-010 - Specific MySQL Data Source Import', async ({ page }) => {
+test('Specific Data Source Import', async ({ page }) => {
     test.setTimeout(300_000);
 
     const testAssetName = process.env.MYSQL_TEST_ASSET;

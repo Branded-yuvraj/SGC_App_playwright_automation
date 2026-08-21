@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import 'dotenv/config';
 
-test('TC-014: Running import without configured connection', async ({ page }) => {
+test('Running import without configured connection', async ({ page }) => {
     test.setTimeout(120_000);
 
     await page.goto(process.env.SN_URL);

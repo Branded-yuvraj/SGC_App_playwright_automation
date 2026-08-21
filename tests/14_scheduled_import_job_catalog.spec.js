@@ -220,7 +220,7 @@ async function openFilteredCatalogLogs(page) {
     return logsFrame;
 }
 
-test('TC-024: Data Catalog import completes and creates expected records', async ({ page }) => {
+test('Data Catalog import completes and creates expected records', async ({ page }) => {
     test.setTimeout(20 * 60_000);
 
     await page.goto(process.env.SN_URL);

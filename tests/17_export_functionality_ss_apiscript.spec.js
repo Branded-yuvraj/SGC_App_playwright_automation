@@ -1,15 +1,30 @@
 import { test, expect } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
+import { parse } from 'csv-parse/sync';
 import 'dotenv/config';
 
+// 1. Read and parse the Master CSV file at startup
+const csvFilePath = path.join(__dirname, '../test-data/dataSource.csv');
+const allRecords = parse(fs.readFileSync(csvFilePath, 'utf8'), {
+    columns: true,
+    skip_empty_lines: true,
+});
+
+// 2. FILTER records for Script 17
+const records = allRecords.filter(row => row.SCRIPT_NO === '17');
+
+// 3. Loop through each row and register tests dynamically at the top level
+for (const row of records) {
 test('Storage File Share export workflow via API', async ({ page }) => {
     test.setTimeout(480_000);
 
     const snUrl = process.env.SN_URL;
-    const dataSourceName = process.env.EXPORT_STORAGESERVER_DATASOURCE;         // e.g. dev69420_smb3_instance
-    const storageServerName = process.env.EXPORT_STORAGESERVER_SERVER;          // e.g. dev69420_smb3_server
-    const storageTypeInput = process.env.EXPORT_STORAGE_TYPE || 'smb';          // e.g. smb or nfs
+    const dataSourceName = row.EXPORT_STORAGESERVER_DATASOURCE;         // e.g. dev69420_smb3_instance
+    const storageServerName = row.EXPORT_STORAGESERVER_SERVER;          // e.g. dev69420_smb3_server
+    const storageTypeInput = row.EXPORT_STORAGE_TYPE || 'smb';          // e.g. smb or nfs
     const tableName = 'cmdb_ci_storage_fileshare';                              // Always target storage file share
-    const fileShareKeyword = process.env.EXPORT_FILESHARE_KEYWORD;
+    const fileShareKeyword = row.EXPORT_FILESHARE_KEYWORD;
 
     const expectedLogExisting = 'Service Graph Connector for BigID: BigIDSyncDSFunctions -> exportDataSource -> Finished Exporting Data Sources : Exported [0] and Updated [1]';
 
@@ -307,3 +322,4 @@ test('Storage File Share export workflow via API', async ({ page }) => {
         'No successful export log message was found'
     ).toBeTruthy();
 });
+}
