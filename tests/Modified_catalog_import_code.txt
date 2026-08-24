@@ -1,0 +1,262 @@
+(function loadData(import_set_table, data_source, import_log, last_success_import_time) {
+
+    var logger = new x_biid_sgc_integ.BigIDLogger();
+    var importStats = {};
+    logger.info("BigID Data Catalogs Import", "Data Loader Script", "Start");
+    
+    try {
+        var dcUtils = new x_biid_sgc_integ.DataCatalogUtils();
+        var boUtils = new x_biid_sgc_integ.BusinessOperationsUtility();
+        var config_functions = new x_biid_sgc_integ.ConfigFunctions();
+        var apiUtil = new x_biid_sgc_integ.BigIDSGAPIUtility();
+        var configRec = config_functions.getConfigRecord();
+        
+        if (configRec == null) {
+            logger.error("BigID Data Catalogs Import", "Data Loader Script", "Configuration details not found. Please check the application configuration settings.");
+            return;
+        }
+        
+        var config = config_functions.getConfig(configRec);
+        var classificationGroup = config.classificationGroup;
+        
+        // Define the expected tag name based on the stored classification group
+        var expectedTagName = 'system.sensitivityClassification.' + classificationGroup;
+
+        var classificationLevels = [];
+        var grpFilter = [{
+            field: "name",
+            value: classificationGroup,
+            operator: "equal"
+        }];
+        var levels = apiUtil.fetchClassificationGrpLevels(JSON.stringify(grpFilter));
+
+        if (!levels.success) {
+            logger.error("BigID Data Catalogs Import", "Data Loader Script", "The API request failed for endpoint: /aci/sc/configs with error: " + levels.message);
+            return;
+        }
+
+        if (!levels.result.hasOwnProperty('data') ||
+            !levels.result.data.hasOwnProperty('scConfigs') ||
+            levels.result.data.scConfigs.length == 0 ||
+            !levels.result.data.scConfigs[0].hasOwnProperty('classifications') ||
+            levels.result.data.scConfigs[0].classifications.length == 0) {
+            logger.error("BigID Data Catalogs Import", "Data Loader Script", "The configured classification group '" + classificationGroup + "' does not exist in the BigID platform.");
+            return;
+        }
+
+        for (var j = 0; j < levels.result.data.scConfigs[0].classifications.length; j++) {
+            classificationLevels = classificationLevels.concat(
+                levels.result.data.scConfigs[0].classifications[j].name
+            );
+        }
+
+        var _dsConnections = [];
+        var dsMap = {};
+        var allSupportedTypes = boUtils.supportedDBTypes.concat(boUtils.unstructuredDBTypes);
+
+        var importDSFilter = [{
+            "field": "type",
+            "value": allSupportedTypes,
+            "operator": "in"
+        }, {
+            "field": "connectionStatusTest.is_success",
+            "value": true,
+            "operator": "equals"
+        }, {
+            "field": "custom_fields.field_name",
+            "value": "servicenow_id_" + gs.getProperty("instance_name"),
+            "operator": "equals"
+        }, {
+            "field": "custom_fields.field_name",
+            "value": "servicenow_dbname_" + gs.getProperty("instance_name"),
+            "operator": "equals"
+        }, {
+            "field": "archived",
+            "value": [false, null],
+            "operator": "in"
+        }];
+
+        _dsConnections = boUtils.fetchDataSources(importDSFilter);
+
+        if (_dsConnections.length == 0) {
+            logger.error("BigID Data Catalogs Import", "Data Loader Script", "No data sources found in the BigID.");
+            return;
+        }
+
+        // Process data sources and filter by matching classification group tag
+        _dsConnections.forEach(function (ds) {
+            var columnMapping = {};
+            if (ds && ds.hasOwnProperty("name")) {
+                if (!boUtils.unstructuredDBTypes.includes(ds.type)) {
+                    dsMap[ds.name] = ds;
+                } else {
+                    if (ds.hasOwnProperty("tags") && ds.tags.length !== 0) {
+                        var tagKVPair = dcUtils.getClassificationTagKV(ds.tags);
+                        
+                        // Validate if the imported tag matches the expected classification group tag name
+                        if (tagKVPair && tagKVPair.tagName === expectedTagName) {
+                            columnMapping['u_key'] = tagKVPair.tagName;
+                            columnMapping['u_value'] = tagKVPair.tagValue;
+                            columnMapping['u_db_type'] = ds.type;
+                            columnMapping['u_sys_class_name'] = boUtils._getSnDbType(ds.type);
+                            var snowCustomParams = dcUtils.getSNCustomParams(ds);
+                            
+                            if (snowCustomParams) {
+                                columnMapping['u_db_sysid'] = snowCustomParams.sn_sysID;
+                                columnMapping['u_database_instance'] = snowCustomParams.sn_dbName;
+                                import_set_table.insert(columnMapping);
+
+                                if (!importStats[ds.name]) {
+                                    importStats[ds.name] = {
+                                        count: 0,
+                                        category: "Unstructured",
+                                        bigidType: ds.type,
+                                        ciClass: boUtils._getSnDbType(ds.type)
+                                    };
+                                }
+                                importStats[ds.name].count++;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        if (Object.keys(dsMap).length === 0) {
+            return;
+        }
+
+        var _dataCatalogsLimit = parseInt(config.batchSize);
+        var _dataCatalogs;
+        var datasourceNameList = Object.keys(dsMap);
+        var invalidDatasources = [];
+
+        for (var dsIndex = 0; dsIndex < datasourceNameList.length; dsIndex++) {
+            var currentDataSource = datasourceNameList[dsIndex];
+            if (!importStats[currentDataSource]) {
+                var dsType = dsMap[currentDataSource].type;
+                importStats[currentDataSource] = {
+                    count: 0,
+                    category: "Structured",
+                    bigidType: dsType,
+                    ciClass: boUtils._getSnDbType(dsType)
+                };
+            }
+
+            var dataCatalogFilter = `catalog_tag.system.sensitivityClassification.${classificationGroup} IN (${classificationLevels}) AND system = "${currentDataSource}"`;
+            var fetchMore = true;
+            var _dataCatalogsSkip = 0;
+
+            while (fetchMore) {
+                var _dataCatalogsResponse = apiUtil.fetchDataCatalogs(dataCatalogFilter, _dataCatalogsLimit, _dataCatalogsSkip);
+
+                if (!_dataCatalogsResponse.success) {
+                    logger.error("BigID Data Catalogs Import", "Data Loader Script", "An error occurred while fetching catalogs for datasource: " + currentDataSource + ". Details=" + JSON.stringify(_dataCatalogsResponse.message));
+                    return;
+                }
+
+                if (!_dataCatalogsResponse.result.hasOwnProperty("results")) {
+                    logger.error("BigID Data Catalogs Import", "Data Loader Script", "An error occurred while accessing catalog results for datasource: " + currentDataSource + ". Details=" + JSON.stringify(_dataCatalogsResponse.result));
+                    return;
+                }
+
+                var totalCatalogCount = _dataCatalogsResponse.result.results?.length;
+
+                if (totalCatalogCount < _dataCatalogsLimit) {
+                    fetchMore = false;
+                }
+
+                _dataCatalogs = _dataCatalogsResponse.result.results;
+
+                if (_dataCatalogs.length == 0) {
+                    logger.info("BigID Data Catalogs Import", "Data Loader Script", "No data catalog found for datasource: " + currentDataSource);
+                } else {
+                    for (var i = 0; i < _dataCatalogs.length; i++) {
+                        if (boUtils.isSupportedBiidType(_dataCatalogs[i].type)) {
+                            var dcObject = _dataCatalogs[i];
+
+                            // Validate that catalog tags contain the exact matching classification group tag name
+                            var isValidTagMatch = false;
+                            var tagKVPair = null;
+
+                            if (dcObject.hasOwnProperty("tags") && dcObject.tags.length > 0) {
+                                tagKVPair = dcUtils.getClassificationTagKV(dcObject.tags);
+                                if (tagKVPair && tagKVPair.tagName === expectedTagName) {
+                                    isValidTagMatch = true;
+                                }
+                            }
+
+                            // Skip processing/logging if the tag doesn't match the configured group
+                            if (!isValidTagMatch) {
+                                continue;
+                            }
+
+                            if (importStats[currentDataSource]) {
+                                importStats[currentDataSource].count++;
+                            }
+
+                            var dsInfo = dcUtils.getValidatedSnowDsInfo(dcObject, dsMap);
+                            if (dsInfo.success) {
+                                var dbName = dsInfo.dsName;
+                                var snClassName = "";
+                                if (dcObject.hasOwnProperty("type")) {
+                                    if (dcObject.type === 'rdb-oracle' && dsInfo.isPDB)
+                                        snClassName = "cmdb_ci_db_ora_pdb_instance";
+                                    else
+                                        snClassName = boUtils._getSnDbType(dcObject.type);
+                                }
+                                if (importStats[currentDataSource]) {
+                                    importStats[currentDataSource].ciClass = snClassName;
+                                }
+                                var record = {
+                                    'u_catalog_name': dcObject.hasOwnProperty("fullyQualifiedName") ? dcObject["fullyQualifiedName"] : "",
+                                    'u_database_instance': dbName,
+                                    'u_db_sysid': dsInfo.dbSysId,
+                                    'u_db_type': dcObject.hasOwnProperty("type") ? dcObject["type"] : "",
+                                    'u_sys_class_name': snClassName,
+                                    'u_db_schema_name': dsInfo.schemaName,
+                                    'u_key': tagKVPair.tagName,
+                                    'u_value': tagKVPair.tagValue
+                                };
+
+                                if (dcObject.hasOwnProperty("attribute") && dcObject.attribute.length != 0) {
+                                    for (var k in dcObject.attribute) {
+                                        record['u_info_obj'] = dcObject.attribute[k];
+                                        import_set_table.insert(record);
+                                    }
+                                } else {
+                                    import_set_table.insert(record);
+                                }
+                            } else {
+                                if (!invalidDatasources.includes(dcObject.source)) {
+                                    invalidDatasources.push(dcObject.source);
+                                    logger.error("BigID Data Catalogs Import", "Data Loader Script", "The " + dcObject.source + " either has missing custom parameters or does not exist in the ServiceNow CMDB");
+                                }
+                            }
+                        }
+                    }
+                }
+
+                _dataCatalogsSkip += _dataCatalogsLimit;
+            }
+        }
+    } catch (err) {
+        logger.error("BigID Data Catalogs Import", "Data Loader Script", "Details=" + err);
+    }
+
+    logger.info("BigID Data Catalogs Import", "Data Loader Script", "========== IMPORT SUMMARY ==========");
+
+    for (var ds in importStats) {
+        logger.info(
+            "BigID Data Catalogs Import",
+            "Data Loader Script",
+            "Datasource=" + ds +
+            ", Category=" + importStats[ds].category +
+            ", BigID Type=" + importStats[ds].bigidType +
+            ", CI Class=" + importStats[ds].ciClass +
+            ", Catalog Count=" + importStats[ds].count
+        );
+    }
+    logger.info("BigID Data Catalogs Import", "Data Loader Script", "End");
+
+})(import_set_table, data_source, import_log, last_success_import_time);

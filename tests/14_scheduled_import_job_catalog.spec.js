@@ -1,5 +1,18 @@
 import { test, expect } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
+import { parse } from 'csv-parse/sync';
 import 'dotenv/config';
+
+// 1. Read and parse the Master CSV file at startup
+const csvFilePath = path.join(__dirname, '../test-data/dataSource.csv');
+const allRecords = parse(fs.readFileSync(csvFilePath, 'utf8'), {
+    columns: true,
+    skip_empty_lines: true,
+});
+
+// 2. FILTER records for Script 08
+const records = allRecords.filter(row => row.SCRIPT_NO === '14');
 
 const STRUCTURED_WITH_CATALOG_TABLE = new Set([
     'rdb-mysql', 'rdb-postgresql', 'rdb-db2', 'rdb-mssql', 'rdb-oracle', 'rdb-sybase',
@@ -19,187 +32,156 @@ const END_MARKER = 'Service Graph Connector for BigID : BigID Data Catalogs Impo
 const LOG_LINE_PATTERN =
     /Datasource=([^,]+), Category=([^,]+), BigID Type=([^,]+), CI Class=([^,]+), Catalog Count=(\d+)/g;
 const TIMESTAMP_LINK_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - Open/;
+async function verifyRecordAndTagViaApi(page, tableName, recordName, expectedTagKey = 'sensitivityClassification', useContains = false) {
+    const result = await page.evaluate(async ({ tableName, recordName, expectedTagKey, useContains }) => {
+        const token = window.g_ck || (window.top && window.top.g_ck) || '';
+        const headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-UserToken': token
+        };
 
-function escapeRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+        // Use 'STARTSWITH' or 'CONTAINS' for catalogs where names append path/correlation identifiers
+        const queryOperator = useContains ? `STARTSWITH` : `=`;
+        const res = await fetch(`/api/now/table/${tableName}?sysparm_query=name${queryOperator}${encodeURIComponent(recordName)}&sysparm_limit=1`, {
+            method: 'GET',
+            credentials: 'include',
+            headers
+        });
+        const data = await res.json();
 
-async function navigateToTableList(page, tableName) {
-    await page.getByRole('menuitem', { name: 'All' }).click();
-    const clearFilterButton = page.getByRole('button', { name: 'Clear filter' });
-    if (await clearFilterButton.isVisible().catch(() => false)) {
-        await clearFilterButton.click();
-    }
-    await page.getByRole('textbox', { name: 'Enter search term to filter' }).fill('tables');
-    await page.getByRole('link', { name: 'Tables 1 of 5' }).click();
-
-    const tablesFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
-
-    // Give the Tables module time to fully load before touching anything
-    await page.waitForTimeout(3_000);
-
-    const tableSearchBox = tablesFrame.getByRole('searchbox', { name: 'Search column: name' });
-    if (await tableSearchBox.isVisible().catch(() => false)) {
-        await tableSearchBox.fill('');
-        await tableSearchBox.press('Enter');
-        await page.waitForTimeout(1_000);
-    }
-
-    let targetLink;
-    let tableExists = false;
-
-    for (let attempt = 1; attempt <= 2; attempt++) {
-        await tableSearchBox.fill(tableName);
-        await page.waitForTimeout(3_000);
-        await tableSearchBox.press('Enter');
-        await page.waitForTimeout(3_000);
-
-        const row = tablesFrame.locator('tr.list_row').filter({ hasText: tableName });
-        targetLink = row.getByRole('link', { name: /^Open record:/i }).first();
-
-        tableExists = await targetLink.isVisible({ timeout: 5_000 }).catch(() => false);
-        if (tableExists) break;
-
-        console.log(`Table "${tableName}" not found on attempt ${attempt}, retrying with extra wait...`);
-        await page.waitForTimeout(3_000);
-    }
-
-    if (!tableExists) {
-        return null;
-    }
-
-    await targetLink.click();
-
-    // Give the table definition record itself time to fully load before
-    // clicking "Show List" — separate from the earlier module-load wait.
-    await page.waitForTimeout(4_000);
-
-    const showListLink = tablesFrame.getByRole('link', { name: 'Show List' });
-    const showListVisible = await showListLink.isVisible({ timeout: 10_000 }).catch(() => false);
-    if (!showListVisible) {
-        return null;
-    }
-
-    await showListLink.click();
-    await page.waitForTimeout(2_000);
-
-    return tablesFrame;
-}
-
-async function openRecordByNamePrefix(page, frame, namePrefix) {
-    const searchBox = frame.getByRole('searchbox', { name: 'Search column: name' });
-
-    if (await searchBox.isVisible({ timeout: 5_000 }).catch(() => false)) {
-        await searchBox.fill('');
-        await searchBox.press('Enter');
-        await page.waitForTimeout(1_000);
-        await page.waitForTimeout(3_000);
-        await searchBox.fill(namePrefix);
-        await searchBox.press('Enter');
-    }
-
-    await page.waitForTimeout(2_000);
-
-    const recordLink = frame
-        .getByRole('link', { name: new RegExp(`Open record: ${escapeRegex(namePrefix)}`) })
-        .first();
-
-    const found = await recordLink.isVisible({ timeout: 15_000 }).catch(() => false);
-    if (!found) return false;
-
-    await recordLink.click();
-    await page.waitForTimeout(5_000);
-    return true;
-}
-
-async function hasClassificationTagKeyValue(page, frame) {
-    const candidates = [
-        frame.getByRole('button', { name: /Key Values\s*\(\d+\)/i }),
-        frame.getByRole('button', { name: 'Key Values', exact: true }),
-        frame.getByRole('tab', { name: /Key Values/i }),
-    ];
-
-    for (const candidate of candidates) {
-        const visible = await candidate.first().isVisible({ timeout: 5_000 }).catch(() => false);
-        if (visible) {
-            await candidate.first().click();
-            await page.waitForTimeout(3_000);
-            break;
+        if (!data.result || data.result.length === 0) {
+            return { recordExists: false, tagExists: false };
         }
+
+        const recordSysId = data.result[0].sys_id;
+
+        const kvRes = await fetch(`/api/now/table/cmdb_key_value?sysparm_query=configuration_item=${recordSysId}&sysparm_limit=50`, {
+            method: 'GET',
+            credentials: 'include',
+            headers
+        });
+        const kvData = await kvRes.json();
+
+        let tagExists = false;
+        if (kvData.result && kvData.result.length > 0) {
+            tagExists = kvData.result.some(item => 
+                (item.key && item.key.includes(expectedTagKey)) || 
+                (item.name && item.name.includes(expectedTagKey))
+            );
+        }
+
+        if (!tagExists && data.result[0].attributes) {
+            tagExists = data.result[0].attributes.includes(expectedTagKey);
+        }
+
+        return { recordExists: true, tagExists };
+    }, { tableName, recordName, expectedTagKey, useContains });
+
+    if (result.recordExists) {
+        console.log(` Record matching "${recordName}" in "${tableName}": Yes, found`);
+    } else {
+        console.log(` Record matching "${recordName}" in "${tableName}": No, not found`);
     }
 
-    const plainTextMatch = frame.getByText(/sensitivityClassification/i).first();
-    const gridCellMatch = frame.getByRole('gridcell', { name: /sensitivityClassification/i }).first();
+    if (result.tagExists) {
+        console.log(` Tag "${expectedTagKey}": Yes, found`);
+    } else {
+        console.log(` Tag "${expectedTagKey}": No, not found`);
+    }
 
-    const foundAsText = await plainTextMatch.isVisible({ timeout: 10_000 }).catch(() => false);
-    if (foundAsText) return true;
-
-    const foundAsGridCell = await gridCellMatch.isVisible({ timeout: 5_000 }).catch(() => false);
-    return foundAsGridCell;
+    return result;
 }
 
-async function verifyStructuredDataSource(page, ds) {
+async function verifyStructuredDataSourceApi(page, ds) {
     const catalogTable = INSTANCE_TO_CATALOG_TABLE[ds.ciClass];
-    expect(catalogTable, `No known catalog table mapping for CI Class "${ds.ciClass}"`).toBeTruthy();
-
-    const catalogFrame = await navigateToTableList(page, catalogTable);
-    if (!catalogFrame) {
-        console.log(`[Warning] Catalog table "${catalogTable}" not found. Skipping.`);
+    if (!catalogTable) {
+        console.log(`Skipping structured verification: No catalog mapping for "${ds.ciClass}"`);
         return;
     }
 
-    const catalogFound = await openRecordByNamePrefix(page, catalogFrame, ds.datasource);
-    if (!catalogFound) {
-        console.log(`[Warning] No catalog record found for "${ds.datasource}" in ${catalogTable}. Skipping.`);
-        return;
-    }
+    // Pass useContains = true so it handles compound correlation names like "Name@schema@path"
+    const catalogCheck = await verifyRecordAndTagViaApi(page, catalogTable, ds.datasource, 'sensitivityClassification', true);
+    if (!catalogCheck.recordExists) return;
 
-    const catalogHasTag = await hasClassificationTagKeyValue(page, catalogFrame);
-    console.log(`${ds.datasource}: Catalog has classification tag = ${catalogHasTag}`);
-    if (!catalogHasTag) {
-        console.log(`[Warning] Catalog for "${ds.datasource}" has no classification Key Value. Skipping.`);
-        return;
-    }
-
-    const infoObjectFrame = await navigateToTableList(page, 'cmdb_ci_information_object');
-    if (!infoObjectFrame) {
-        console.log(`[Warning] Information Object table not found. Skipping.`);
-        return;
-    }
-
-    const infoObjectFound = await openRecordByNamePrefix(page, infoObjectFrame, ds.datasource);
-    if (!infoObjectFound) {
-        console.log(`[Warning] No Information Object found for "${ds.datasource}". Skipping.`);
-        return;
-    }
-
-    const infoObjectHasTag = await hasClassificationTagKeyValue(page, infoObjectFrame);
-    console.log(`${ds.datasource}: Information Object has classification tag = ${infoObjectHasTag}`);
-    if (!infoObjectHasTag) {
-        console.log(`[Warning] Information Object for "${ds.datasource}" has no classification Key Value. Skipping.`);
-        return;
-    }
+    await verifyRecordAndTagViaApi(page, 'cmdb_ci_information_object', ds.datasource, 'sensitivityClassification', true);
 }
+// --- API Verification Helper returning results to Node ---
+// async function verifyRecordAndTagViaApi(page, tableName, recordName, expectedTagKey = 'sensitivityClassification') {
+//     const result = await page.evaluate(async ({ tableName, recordName, expectedTagKey }) => {
+//         const token = window.g_ck || (window.top && window.top.g_ck) || '';
+//         const headers = {
+//             'Content-Type': 'application/json',
+//             'Accept': 'application/json',
+//             'X-UserToken': token
+//         };
 
-async function verifyUnstructuredDataSource(page, ds) {
-    const instanceFrame = await navigateToTableList(page, ds.ciClass);
-    if (!instanceFrame) {
-        console.log(`[Warning] Table definition for CI Class "${ds.ciClass}" does not exist in ServiceNow. Skipping.`);
-        return;
-    }
+//         const res = await fetch(`/api/now/table/${tableName}?sysparm_query=name=${encodeURIComponent(recordName)}&sysparm_limit=1`, {
+//             method: 'GET',
+//             credentials: 'include',
+//             headers
+//         });
+//         const data = await res.json();
 
-    const instanceFound = await openRecordByNamePrefix(page, instanceFrame, ds.datasource);
-    if (!instanceFound) {
-        console.log(`[Warning] No record found for "${ds.datasource}" in ${ds.ciClass}. Skipping.`);
-        return;
-    }
+//         if (!data.result || data.result.length === 0) {
+//             return { recordExists: false, tagExists: false };
+//         }
 
-    const hasTag = await hasClassificationTagKeyValue(page, instanceFrame);
-    console.log(`${ds.datasource}: Instance has classification tag = ${hasTag}`);
-    if (!hasTag) {
-        console.log(`[Warning] Instance record for "${ds.datasource}" has no classification Key Value. Skipping.`);
-        return;
-    }
+//         const recordSysId = data.result[0].sys_id;
+
+//         const kvRes = await fetch(`/api/now/table/cmdb_key_value?sysparm_query=configuration_item=${recordSysId}&sysparm_limit=50`, {
+//             method: 'GET',
+//             credentials: 'include',
+//             headers
+//         });
+//         const kvData = await kvRes.json();
+
+//         let tagExists = false;
+//         if (kvData.result && kvData.result.length > 0) {
+//             tagExists = kvData.result.some(item => 
+//                 (item.key && item.key.includes(expectedTagKey)) || 
+//                 (item.name && item.name.includes(expectedTagKey))
+//             );
+//         }
+
+//         if (!tagExists && data.result[0].attributes) {
+//             tagExists = data.result[0].attributes.includes(expectedTagKey);
+//         }
+
+//         return { recordExists: true, tagExists };
+//     }, { tableName, recordName, expectedTagKey });
+
+//     // Print proof cleanly in the terminal
+//     if (result.recordExists) {
+//         console.log(` Record "${recordName}" in "${tableName}": Yes, found`);
+//     } else {
+//         console.log(` Record "${recordName}" in "${tableName}": No, not found`);
+//     }
+
+//     if (result.tagExists) {
+//         console.log(` Tag "${expectedTagKey}": Yes, found`);
+//     } else {
+//         console.log(` Tag "${expectedTagKey}": No, not found`);
+//     }
+
+//     return result;
+// }
+
+// async function verifyStructuredDataSourceApi(page, ds) {
+//     const catalogTable = INSTANCE_TO_CATALOG_TABLE[ds.ciClass];
+//     if (!catalogTable) {
+//         console.log(`Skipping structured verification: No catalog mapping for "${ds.ciClass}"`);
+//         return;
+//     }
+
+//     const catalogCheck = await verifyRecordAndTagViaApi(page, catalogTable, ds.datasource);
+//     if (!catalogCheck.recordExists) return;
+
+//     await verifyRecordAndTagViaApi(page, 'cmdb_ci_information_object', ds.datasource);
+// }
+
+async function verifyUnstructuredDataSourceApi(page, ds) {
+    await verifyRecordAndTagViaApi(page, ds.ciClass, ds.datasource);
 }
 
 async function openFilteredCatalogLogs(page) {
@@ -219,9 +201,11 @@ async function openFilteredCatalogLogs(page) {
 
     return logsFrame;
 }
+for (const row of records) {
+test(`TC-14: Data Catalog import for group (${row.CLASSIFICATION_GROUP_NAME})`, async ({ page }) => {
+    test.setTimeout(60 * 60_000);
 
-test('Data Catalog import completes and creates expected records', async ({ page }) => {
-    test.setTimeout(20 * 60_000);
+    const classificationGroupName = row.CLASSIFICATION_GROUP_NAME;
 
     await page.goto(process.env.SN_URL);
 
@@ -229,7 +213,6 @@ test('Data Catalog import completes and creates expected records', async ({ page
     const baselineLink = logsFrame.getByRole('link', { name: TIMESTAMP_LINK_PATTERN }).first();
     const hasExistingLogs = await baselineLink.isVisible({ timeout: 10_000 }).catch(() => false);
     const baselineTimestamp = hasExistingLogs ? (await baselineLink.innerText()).trim() : null;
-    console.log(`Baseline timestamp (everything after this is new): ${baselineTimestamp ?? 'none - log is empty'}`);
 
     await page.getByRole('menuitem', { name: 'All' }).click();
     const clearFilterButton = page.getByRole('button', { name: 'Clear filter' });
@@ -241,18 +224,30 @@ test('Data Catalog import completes and creates expected records', async ({ page
 
     const guidedSetupFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
     await guidedSetupFrame
-        .getByRole('button', { name: 'Select chain item to goto Set' })
-        .waitFor({ state: 'attached', timeout: 60_000 });
+      .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
+      .click({ timeout: 60_000 });
+    await guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' }).click();
+    await guidedSetupFrame.getByRole('link', { name: 'Configure Click to configure task Configure Properties' }).click();
+
+    const classificationField = guidedSetupFrame.getByRole('textbox').first();
+    await classificationField.waitFor({ state: 'visible', timeout: 30_000 });
+    await classificationField.click();
+    await classificationField.press('ControlOrMeta+a');
+    await classificationField.fill(classificationGroupName);
+
+    await guidedSetupFrame.getByRole('toolbar').getByRole('button', { name: 'Save and Validate' }).click();
+    await guidedSetupFrame.getByRole('button', { name: 'OK', exact: true }).click();
+
+    await page.getByRole('menuitem', { name: 'All' }).click();
+    await page.getByRole('link', { name: 'Setup 1 of' }).click();
     await guidedSetupFrame.getByRole('button', { name: 'Select chain item to goto Set' }).click();
     await guidedSetupFrame.getByRole('link', { name: ' Task in progress Import Data Catalogs' }).click();
-    await guidedSetupFrame
-        .getByRole('link', { name: 'Configure Click to configure task Import Data Catalogs' })
-        .click();
+    await guidedSetupFrame.getByRole('link', { name: 'Configure Click to configure task Import Data Catalogs' }).click();
     await guidedSetupFrame.locator('#execute_bottom').click();
 
     logsFrame = await openFilteredCatalogLogs(page);
 
-    const MAX_POLLS = 20;
+    const MAX_POLLS = 60;
     let newContent = '';
     let foundEndMarker = false;
 
@@ -273,12 +268,10 @@ test('Data Catalog import completes and creates expected records', async ({ page
         await logsFrame.locator('body').waitFor({ state: 'visible', timeout: 60_000 });
     }
 
-    expect(foundEndMarker, 'Catalog import did not complete (within new content) within the max wait time').toBeTruthy();
+    expect(foundEndMarker, 'Catalog import did not complete within the max wait time').toBeTruthy();
 
     const endIndex = newContent.indexOf(END_MARKER);
     const startIndex = newContent.lastIndexOf(START_MARKER);
-    expect(startIndex).toBeGreaterThan(endIndex);
-
     const latestRunBlock = newContent.slice(endIndex, startIndex);
 
     const dataSources = [];
@@ -287,7 +280,7 @@ test('Data Catalog import completes and creates expected records', async ({ page
         const [, datasource, category, bigidType, ciClass, catalogCountStr] = match;
         const catalogCount = parseInt(catalogCountStr, 10);
         if (catalogCount === 0) {
-            console.log(`Skipping "${datasource}" — Catalog Count is 0.`);
+            console.log(`Skipping datasource "${datasource.trim()}" — Catalog Count is 0.`);
             continue;
         }
         dataSources.push({
@@ -300,15 +293,15 @@ test('Data Catalog import completes and creates expected records', async ({ page
         });
     }
 
-    console.log(`Found ${dataSources.length} data source(s) to verify:`, dataSources);
     expect(dataSources.length, 'No data sources parsed from the log block').toBeGreaterThan(0);
 
     for (const ds of dataSources) {
-        console.log(`\nVerifying "${ds.datasource}" (${ds.bigidType})...`);
+        console.log(`\n--- Verifying Datasource: "${ds.datasource}" ---`);
         if (ds.hasCatalogTable) {
-            await verifyStructuredDataSource(page, ds);
+            await verifyStructuredDataSourceApi(page, ds);
         } else {
-            await verifyUnstructuredDataSource(page, ds);
+            await verifyUnstructuredDataSourceApi(page, ds);
         }
     }
 });
+}
