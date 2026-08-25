@@ -1,6 +1,9 @@
 SCRIPT_NO,CLASSIFICATION_GROUP_NAME,IMPORT_JOB_RDB_DATASOURCE,IMPORT_JOB_RDB_SERVER,IMPORT_JOB_RDB_TYPE,RDB_URL,IMPORT_JOB_LDC_DATASOURCE,IMPORT_JOB_LDC,IMPORT_JOB_LDC_TYPE,IMPORT_JOB_LDC_DNS_DOMAIN,IMPORT_JOB_SS_DATASOURCE,IMPORT_JOB_SS,IMPORT_JOB_SS_TYPE,IMPORT_JOB_SS_IP_ADDRESS,EXPORT_SERVER_INSTANCE,EXPORT_SERVER_NAME,EXPORT_SERVER_CI_CLASS,EXPORT_LDC_DATASOURCE,EXPORT_LDC_DATACENTER,EXPORT_LDC_CI_CLASS,EXPORT_STORAGESERVER_DATASOURCE,EXPORT_STORAGESERVER_SERVER,EXPORT_STORAGE_TYPE,EXPORT_FILESHARE_KEYWORD
 03,Sensitivity,,,,,,,,,,,,,,,,,,,,,,
-03,Incorrect,,,,,,,,,,,,,,,,,,,,,,
+03,Confidential Data Sources,,,,,,,,,,,,,,,,,,,,,,
+03,BluePineapple,,,,,,,,,,,,,,,,,,,,,,
+04,Incorrect,,,,,,,,,,,,,,,,,,,,,,
+04,Random Data,,,,,,,,,,,,,,,,,,,,,,
 07,,MSSQL,MSSQL_server,MSSQL,bigid-mssql.cabt0fxz03bw.us-east-1.rds.amazonaws.com,,,,,,,,,,,,,,,,,,
 09,,,,,,,,,,smb first,smb_first_ss,SMB,34.198.0.183,,,,,,,,,,
 09,,,,,,,,,,smb - Sensitive Data,smb_-_Sensitive_Data_ss,SMB,34.198.0.183,,,,,,,,,,
@@ -64,3 +67,7 @@ SCRIPT_NO,CLASSIFICATION_GROUP_NAME,IMPORT_JOB_RDB_DATASOURCE,IMPORT_JOB_RDB_SER
 08,,,,,,smb parq,smb_parq_ldc,SMB,10.2.0.139,,,,,,,,,,,,,,
 14,BluePineapple,,,,,,,,,,,,,,,,,,,,,,
 14,Confidential Data Sources,,,,,,,,,,,,,,,,,,,,,,
+14,Sensitivity,,,,,,,,,,,,,,,,,,,,,,
+15,,,,,,,,,,,,,,dev69420_mssql2_instance,dev69420_mssql2_server,cmdb_ci_db_mssql_instance,,,,,,,
+16,,,,,,,,,,,,,,,,,dev69420_s3_second_instance,dev69420_s3_second_logical_dc,cmdb_ci_aws_s3_endpoint,,,,
+17,,,,,,,,,,,,,,,,,,,,dev69420_nfs4_instance,dev69420_nfs4_server,nfs,nfskeyword

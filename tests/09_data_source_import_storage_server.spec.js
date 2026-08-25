@@ -17,7 +17,7 @@ const records = allRecords.filter(row => row.SCRIPT_NO === '09');
 // 3. Loop through each row and register tests dynamically at the top level
 for (const row of records) {
 
-test('Storage File Share import with storage server prerequisite & direct table verification', async ({ page }) => {
+test(`TC-09: API-Driven Storage Server Creation with IP/DNS Validation & Dynamic Verification (${row.IMPORT_JOB_SS_DATASOURCE})`, async ({ page }) => {
     test.setTimeout(180_000);
 
     const snUrl = process.env.SN_URL;
