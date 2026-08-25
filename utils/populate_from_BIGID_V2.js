@@ -132,6 +132,29 @@ async function main() {
         const detail = await fetchConnectionDetail(name, sessionToken);
         if (!detail) continue;
 
+        // --- ROBUST CONNECTION VALIDATION ---
+        const statusObj = detail.connectionStatusTest || detail.connectionStatusScan;
+        const statusDetails = detail.enrichmentFields?.statusDetails?.status;
+
+        // 1. Skip if an explicit test/scan ran and failed
+        if (statusObj && statusObj.is_success === false) {
+            console.log(` -> Skipping "${name}": Connection status/test failed.`);
+            continue;
+        }
+
+        // 2. Skip if it's in a Draft, ConnectionError, or Failed state
+        if (['Draft', 'ConnectionError', 'Failed'].includes(statusDetails)) {
+            console.log(` -> Skipping "${name}": Status is "${statusDetails}".`);
+            continue;
+        }
+
+        // 3. Optional: Skip if there is no connection test/scan record at all yet
+        if (!statusObj) {
+            console.log(` -> Skipping "${name}": No connection test or scan record found.`);
+            continue;
+        }
+        // 
+
         // For Redshift, use rdb_url if available, otherwise fall back to resourceAddress, and strip port if present
         let addressValue = '';
         if (type === 'rdb-redshift') {
@@ -154,7 +177,7 @@ async function main() {
             row08.IMPORT_JOB_LDC_DATASOURCE = name;
             row08.IMPORT_JOB_LDC = `${name.replace(/\s+/g, '_')}_ldc`;
             row08.IMPORT_JOB_LDC_TYPE = TYPE_LABELS[type] || type.toUpperCase();
-            row08.IMPORT_JOB_LDC_DNS_DOMAIN = addressValue; // Cleaned address mapping for LDC / Redshift
+            row08.IMPORT_JOB_LDC_DNS_DOMAIN = addressValue;
             newRows.push(row08);
 
             if (type === 'smb_v2' || type === 'nfs_v2') {
@@ -169,12 +192,7 @@ async function main() {
         }
     }
 
-    let existingLines = [];
-    if (fs.existsSync(CSV_PATH)) {
-        existingLines = fs.readFileSync(CSV_PATH, 'utf-8').trim().split('\n');
-    }
-
-   let existingHeader = CSV_COLUMNS.join(',');
+    let existingHeader = CSV_COLUMNS.join(',');
     const existingDataMap = new Map();
 
     if (fs.existsSync(CSV_PATH)) {
@@ -186,14 +204,11 @@ async function main() {
             for (let i = 1; i < lines.length; i++) {
                 const line = lines[i];
                 
-                // Safely check what script number this row starts with (e.g. "01", "03", "07", etc.)
-                // CSV rows typically start with the script number as the first column.
                 const firstCommaIndex = line.indexOf(',');
                 let scriptNo = firstCommaIndex !== -1 ? line.substring(0, firstCommaIndex).replace(/^"|"$/g, '').trim() : '';
 
-                // If it's a target script (07, 08, 09), let's parse out its datasource for smart upserting
                 if (['07', '08', '09'].includes(scriptNo)) {
-                    const cols = line.split(','); // safe here since these generated rows are flat
+                    const cols = line.split(','); 
                     const rdbDs = cols[2]?.replace(/^"|"$/g, '').trim();
                     const ldcDs = cols[6]?.replace(/^"|"$/g, '').trim();
                     const ssDs = cols[10]?.replace(/^"|"$/g, '').trim();
@@ -205,14 +220,11 @@ async function main() {
                     }
                 }
 
-                // FALLBACK: For ALL other rows (scripts 01, 02, 03, or any row that couldn't be parsed),
-                // store them using a unique line index key so they are NEVER lost or overwritten.
                 existingDataMap.set(`preserved_line_${i}`, line);
             }
         }
     }
 
-    // Process new rows and upsert/replace based on SCRIPT_NO + datasource name
     for (const row of newRows) {
         const scriptNo = row.SCRIPT_NO;
         const dsName = row.IMPORT_JOB_RDB_DATASOURCE || row.IMPORT_JOB_LDC_DATASOURCE || row.IMPORT_JOB_SS_DATASOURCE;
