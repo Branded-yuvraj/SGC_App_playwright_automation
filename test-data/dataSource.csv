@@ -47,3 +47,4 @@ SCRIPT_NO,CLASSIFICATION_GROUP_NAME,IMPORT_JOB_RDB_DATASOURCE,IMPORT_JOB_RDB_SER
 07,,VZ MySQL,VZ_MySQL_server,MYSQL,aws-mysql.cabt0fxz03bw.us-east-1.rds.amazonaws.com,,,,,,,,,,,,,,,,,,
 07,,yoave people for correlation,yoave_people_for_correlation_server,MYSQL,aws-mysql.cabt0fxz03bw.us-east-1.rds.amazonaws.com,,,,,,,,,,,,,,,,,,
 07,,yoave people for correlation 500 rows,yoave_people_for_correlation_500_rows_server,MYSQL,aws-mysql.cabt0fxz03bw.us-east-1.rds.amazonaws.com,,,,,,,,,,,,,,,,,,
+15,,,,,,,,,,,,,,dev69420_oracle_pdb_instance,dev69420_oracle_instance,cmdb_ci_db_ora_pdb_instance,,,,,,,

@@ -16,7 +16,7 @@ const records = allRecords.filter(row => row.SCRIPT_NO === '17');
 
 // 3. Loop through each row and register tests dynamically at the top level
 for (const row of records) {
-test('Storage File Share export workflow via API', async ({ page }) => {
+test(`Storage File Share export workflow via API (${row.EXPORT_STORAGESERVER_DATASOURCE})`, async ({ page }) => {
     test.setTimeout(480_000);
 
     const snUrl = process.env.SN_URL;
