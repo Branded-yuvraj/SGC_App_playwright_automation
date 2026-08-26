@@ -32,6 +32,7 @@ const END_MARKER = 'Service Graph Connector for BigID : BigID Data Catalogs Impo
 const LOG_LINE_PATTERN =
     /Datasource=([^,]+), Category=([^,]+), BigID Type=([^,]+), CI Class=([^,]+), Catalog Count=(\d+)/g;
 const TIMESTAMP_LINK_PATTERN = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} - Open/;
+
 async function verifyRecordAndTagViaApi(page, tableName, recordName, expectedTagKey = 'sensitivityClassification', useContains = false) {
     const result = await page.evaluate(async ({ tableName, recordName, expectedTagKey, useContains }) => {
         const token = window.g_ck || (window.top && window.top.g_ck) || '';
@@ -65,8 +66,8 @@ async function verifyRecordAndTagViaApi(page, tableName, recordName, expectedTag
 
         let tagExists = false;
         if (kvData.result && kvData.result.length > 0) {
-            tagExists = kvData.result.some(item => 
-                (item.key && item.key.includes(expectedTagKey)) || 
+            tagExists = kvData.result.some(item =>
+                (item.key && item.key.includes(expectedTagKey)) ||
                 (item.name && item.name.includes(expectedTagKey))
             );
         }
@@ -106,101 +107,69 @@ async function verifyStructuredDataSourceApi(page, ds) {
 
     await verifyRecordAndTagViaApi(page, 'cmdb_ci_information_object', ds.datasource, 'sensitivityClassification', true);
 }
-// --- API Verification Helper returning results to Node ---
-// async function verifyRecordAndTagViaApi(page, tableName, recordName, expectedTagKey = 'sensitivityClassification') {
-//     const result = await page.evaluate(async ({ tableName, recordName, expectedTagKey }) => {
-//         const token = window.g_ck || (window.top && window.top.g_ck) || '';
-//         const headers = {
-//             'Content-Type': 'application/json',
-//             'Accept': 'application/json',
-//             'X-UserToken': token
-//         };
-
-//         const res = await fetch(`/api/now/table/${tableName}?sysparm_query=name=${encodeURIComponent(recordName)}&sysparm_limit=1`, {
-//             method: 'GET',
-//             credentials: 'include',
-//             headers
-//         });
-//         const data = await res.json();
-
-//         if (!data.result || data.result.length === 0) {
-//             return { recordExists: false, tagExists: false };
-//         }
-
-//         const recordSysId = data.result[0].sys_id;
-
-//         const kvRes = await fetch(`/api/now/table/cmdb_key_value?sysparm_query=configuration_item=${recordSysId}&sysparm_limit=50`, {
-//             method: 'GET',
-//             credentials: 'include',
-//             headers
-//         });
-//         const kvData = await kvRes.json();
-
-//         let tagExists = false;
-//         if (kvData.result && kvData.result.length > 0) {
-//             tagExists = kvData.result.some(item => 
-//                 (item.key && item.key.includes(expectedTagKey)) || 
-//                 (item.name && item.name.includes(expectedTagKey))
-//             );
-//         }
-
-//         if (!tagExists && data.result[0].attributes) {
-//             tagExists = data.result[0].attributes.includes(expectedTagKey);
-//         }
-
-//         return { recordExists: true, tagExists };
-//     }, { tableName, recordName, expectedTagKey });
-
-//     // Print proof cleanly in the terminal
-//     if (result.recordExists) {
-//         console.log(` Record "${recordName}" in "${tableName}": Yes, found`);
-//     } else {
-//         console.log(` Record "${recordName}" in "${tableName}": No, not found`);
-//     }
-
-//     if (result.tagExists) {
-//         console.log(` Tag "${expectedTagKey}": Yes, found`);
-//     } else {
-//         console.log(` Tag "${expectedTagKey}": No, not found`);
-//     }
-
-//     return result;
-// }
-
-// async function verifyStructuredDataSourceApi(page, ds) {
-//     const catalogTable = INSTANCE_TO_CATALOG_TABLE[ds.ciClass];
-//     if (!catalogTable) {
-//         console.log(`Skipping structured verification: No catalog mapping for "${ds.ciClass}"`);
-//         return;
-//     }
-
-//     const catalogCheck = await verifyRecordAndTagViaApi(page, catalogTable, ds.datasource);
-//     if (!catalogCheck.recordExists) return;
-
-//     await verifyRecordAndTagViaApi(page, 'cmdb_ci_information_object', ds.datasource);
-// }
 
 async function verifyUnstructuredDataSourceApi(page, ds) {
     await verifyRecordAndTagViaApi(page, ds.ciClass, ds.datasource);
 }
 
-async function openFilteredCatalogLogs(page) {
-    await page.getByRole('menuitem', { name: 'All' }).click();
-    const clearFilterButton = page.getByRole('button', { name: 'Clear filter' });
-    if (await clearFilterButton.isVisible().catch(() => false)) {
-        await clearFilterButton.click();
+/**
+ * Generic hardened navigation helper: clicks the "All" application menu item,
+ * clears any existing filter, types a search term, and waits for + clicks the
+ * resulting link. Retries the whole sequence if any step doesn't resolve,
+ * since ServiceNow's classic UI list/menu refreshes are async and don't
+ * always finish before the next click would otherwise fire.
+ */
+async function navigateToAllMenuAndSearch(page, searchTerm, linkNameOrPattern, { retries = 3, timeout = 15_000 } = {}) {
+    let lastError;
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            const allMenuItem = page.getByRole('menuitem', { name: 'All' });
+            await allMenuItem.waitFor({ state: 'visible', timeout });
+            await allMenuItem.click();
+
+            const clearFilterButton = page.getByRole('button', { name: 'Clear filter' });
+            if (await clearFilterButton.isVisible({ timeout: 2_000 }).catch(() => false)) {
+                await clearFilterButton.click();
+            }
+
+            const searchBox = page.getByRole('textbox', { name: 'Enter search term to filter' });
+            await searchBox.waitFor({ state: 'visible', timeout });
+            await searchBox.fill(searchTerm);
+
+            const targetLink = page.getByRole('link', { name: linkNameOrPattern });
+            await targetLink.waitFor({ state: 'visible', timeout });
+            await targetLink.click();
+
+            return; // success
+        } catch (err) {
+            lastError = err;
+            console.log(`Attempt ${attempt}/${retries} to navigate via "${searchTerm}" -> "${linkNameOrPattern}" failed: ${err.message}`);
+            if (attempt < retries) {
+                await page.waitForTimeout(2_000);
+            }
+        }
     }
-    await page.getByRole('textbox', { name: 'Enter search term to filter' }).fill('em logs');
-    await page.getByRole('link', { name: 'All 1 of' }).click();
+    throw new Error(`navigateToAllMenuAndSearch failed after ${retries} attempts for "${searchTerm}": ${lastError?.message}`);
+}
+
+async function openFilteredCatalogLogs(page) {
+    await navigateToAllMenuAndSearch(page, 'em logs', 'All 1 of');
 
     const logsFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
+    await logsFrame.locator('body').waitFor({ state: 'visible', timeout: 20_000 });
+
     const messageSearch = logsFrame.getByRole('searchbox', { name: 'Search column: message' });
+    await messageSearch.waitFor({ state: 'visible', timeout: 20_000 });
     await messageSearch.fill('Service Graph Connector');
     await messageSearch.press('Enter');
-    await page.waitForTimeout(2_000);
+
+    // Wait for the filter to actually apply instead of a flat sleep.
+    await expect(messageSearch).toHaveValue('Service Graph Connector');
+    await page.waitForLoadState('networkidle').catch(() => {});
 
     return logsFrame;
 }
+
 for (const row of records) {
 test(`TC-14: Data Catalog import for group (${row.CLASSIFICATION_GROUP_NAME})`, async ({ page }) => {
     test.setTimeout(60 * 60_000);
@@ -211,16 +180,13 @@ test(`TC-14: Data Catalog import for group (${row.CLASSIFICATION_GROUP_NAME})`, 
 
     let logsFrame = await openFilteredCatalogLogs(page);
     const baselineLink = logsFrame.getByRole('link', { name: TIMESTAMP_LINK_PATTERN }).first();
-    const hasExistingLogs = await baselineLink.isVisible({ timeout: 10_000 }).catch(() => false);
+    // Bumped timeout: on a slow render the list may not have the baseline row
+    // visible yet at 10s, which previously caused baselineTimestamp to be
+    // wrongly recorded as null.
+    const hasExistingLogs = await baselineLink.isVisible({ timeout: 20_000 }).catch(() => false);
     const baselineTimestamp = hasExistingLogs ? (await baselineLink.innerText()).trim() : null;
 
-    await page.getByRole('menuitem', { name: 'All' }).click();
-    const clearFilterButton = page.getByRole('button', { name: 'Clear filter' });
-    if (await clearFilterButton.isVisible().catch(() => false)) {
-        await clearFilterButton.click();
-    }
-    await page.getByRole('textbox', { name: 'Enter search term to filter' }).fill('bigid');
-    await page.getByRole('link', { name: 'Setup 1 of' }).click();
+    await navigateToAllMenuAndSearch(page, 'bigid', 'Setup 1 of');
 
     const guidedSetupFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
     await guidedSetupFrame
@@ -238,8 +204,7 @@ test(`TC-14: Data Catalog import for group (${row.CLASSIFICATION_GROUP_NAME})`, 
     await guidedSetupFrame.getByRole('toolbar').getByRole('button', { name: 'Save and Validate' }).click();
     await guidedSetupFrame.getByRole('button', { name: 'OK', exact: true }).click();
 
-    await page.getByRole('menuitem', { name: 'All' }).click();
-    await page.getByRole('link', { name: 'Setup 1 of' }).click();
+    await navigateToAllMenuAndSearch(page, 'bigid', 'Setup 1 of');
     await guidedSetupFrame.getByRole('button', { name: 'Select chain item to goto Set' }).click();
     await guidedSetupFrame.getByRole('link', { name: ' Task in progress Import Data Catalogs' }).click();
     await guidedSetupFrame.getByRole('link', { name: 'Configure Click to configure task Import Data Catalogs' }).click();
