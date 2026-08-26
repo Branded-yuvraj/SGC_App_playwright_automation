@@ -34,14 +34,12 @@ BIGID_ROOT_URL=https://your-tenant.bigid.cloud/
 BIGID_API_KEY=your_bigid_api_key
 ```
 
-`.env` is gitignored — never commit real credentials.
-
 ## 3. Populate test data (`test-data/dataSource.csv`)
 
 The suite reads all its per-scenario test data from `test-data/dataSource.csv`. Each row is
 tagged with a `SCRIPT_NO` that tells the matching numbered test file which rows belong to it.
 
-**Import-side rows (07, 08, 09) can be auto-generated from real BigID connections:**
+**Import-side rows (07, 08, 09) can be auto-generated from real BigID connections using SGC_playwright\utils\populate_from_BIGID_V2.js:**
 
 ```bash
 node utils/populate_from_BIGID.js
@@ -55,23 +53,22 @@ won't duplicate rows or disturb manually-maintained ones (script numbers 01–06
 
 **Export-side rows (15, 16, 17) are NOT auto-generated** — those tests verify ServiceNow → BigID
 export, which needs invented/synthetic CI names that don't exist yet in BigID. Maintain those
-rows by hand directly in the CSV.
+rows by hand directly in the CSV. The script does produce them in servicenow however their configuration must be present in the CSV
 
 `SCRIPT_NO` legend:
 
 | SCRIPT_NO | Test file | Purpose |
-|---|---|---|
 | 00 | `00_login_and_save_session` | Auth setup (runs automatically first) |
 | 01 | `01_scheduled_import_job_invalid_config_run` | Import job with no connection configured |
 | 02 | `02_credential_setup` | Save valid BigID credentials |
 | 03 | `03_configuration_classificationgrp_setup` | Valid classification group |
 | 04 | `04_configuration_empty_invalid_classification_group` | Invalid classification group (negative) |
 | 05 | `05_configuration_invalidbatchsize` | Invalid batch size (negative) |
-| 06 | `06_configuration_specific_data_source_import` | Specific data source import |
+| 06 | `06_bulk_data_source_import` | Bulk import of data sources without creating server or ci record |
 | 07 | `07_data_source_import_server` | RDB data source import (needs a Server CI) |
 | 08 | `08_data_source_import_ldc` | S3 / Redshift / DynamoDB / SMB / NFS import (Logical Datacenter) |
 | 09 | `09_data_source_import_storage_server` | SMB / NFS import (Storage Server variant) |
-| 10 | `10_configuration_emptydatasourcefield` | Empty data source field (negative) |
+| 10 | `10_configuration_emptydatasourcefield` | Empty data source field (Imports all) |
 | 11–13 | `11-13_scheduled_catalog_import_prerequisite_script_*` | CI Class Manager Key-Value setup (S3, File System, Storage File Share) |
 | 14 | `14_scheduled_import_job_catalog` | Data Catalog import verification |
 | 15 | `15_export_functionality_rdb_apiscript` | RDB export |
@@ -86,9 +83,8 @@ unstructured sources (S3, SMB, NFS) are processed but never appear in the log, w
 suite's log-parsing step (`14_scheduled_import_job_catalog`) depends on to discover which data
 sources were actually imported.
 
-To make unstructured sources show up in the log too, apply this change to the `loadData`
-function, inside the `else` branch that handles unstructured types (where `columnMapping` gets
-built and inserted):
+To make unstructured sources show up in the log too, apply the following script in ServiceNow studio
+inside the data-catalog import script
 
 ```javascript
 (function loadData(import_set_table, data_source, import_log, last_success_import_time) {
@@ -363,7 +359,7 @@ entries).
 ## 5. Running the full smoke suite
 
 ```bash
-npx playwright test
+npx playwright test --workers 1 --headed // headed for watching it run real time , 1 worker ensures that there is no clash between accessing resources in servicenow.
 ```
 
 That's it — one command runs everything, in order:
@@ -372,22 +368,12 @@ That's it — one command runs everything, in order:
    reuse (configured as a Playwright setup project dependency).
 2. Numbered test files execute in ascending order (`00` → `17`), each pulling its own rows from
    `dataSource.csv` by `SCRIPT_NO` and generating one Playwright test per matching row.
-3. `workers: 1` in `playwright.config.js` keeps everything sequential — required, since later
-   tests depend on state earlier ones create (credentials configured, classification group set,
-   CI Class Manager prerequisites in place, etc.).
 
 **Useful variants:**
 
 ```bash
-npx playwright test 07_data_source_import_server   # run just one numbered file
+npx playwright test 07_data_source_import_server.spec.js --headed   # run just one numbered file
 npx playwright test --headed                        # watch it run in a real browser
 npx playwright show-report                           # view the last HTML report
 ```
 
-## 6. Known caveats
-
-- `05_configuration_invalidbatchsize` and `04_configuration_empty_invalid_classification_group`
-  intentionally leave the app in a broken state mid-test (to test validation) — both reset
-  themselves back to valid values afterward, so downstream tests aren't affected.
-- `01_scheduled_import_job_invalid_config_run` must run **before** credentials are configured
-  (it tests the "no connection configured" error path) — this is why it's numbered before `02`.
