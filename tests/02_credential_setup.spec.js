@@ -13,7 +13,7 @@ test('Save valid BigID credentials', async ({ page }) => {
 
   // --- Open the Guided Setup deep link recorded by codegen ---
   await page.goto(
-    'https://dev403923.service-now.com/now/nav/ui/classic/params/target/%24guided_setup.do%23%2Fcontent%2F5ab5cb379371021047d3b0a08bba100c%3Ffocus%3D38388f3b9371021047d3b0a08bba1078%26group_focuses%3D%26home_options%3Dintro%26scroll_to%3D%26filter%3Dall'
+    `${process.env.SN_URL}/now/nav/ui/classic/params/target/%24guided_setup.do%23%2Fcontent%2F5ab5cb379371021047d3b0a08bba100c%3Ffocus%3D38388f3b9371021047d3b0a08bba1078%26group_focuses%3D%26home_options%3Dintro%26scroll_to%3D%26filter%3Dall`
   );
 
   const guidedSetupFrame = page.locator('iframe[name="gsft_main"]').contentFrame();

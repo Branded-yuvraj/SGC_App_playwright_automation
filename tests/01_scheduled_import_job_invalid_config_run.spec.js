@@ -34,7 +34,7 @@ test('Running import without configured connection', async ({ page }) => {
 
     // --- Navigate directly to System Logs, filtered to today, newest first ---
     await page.goto(
-        'https://dev403923.service-now.com/now/nav/ui/classic/params/target/syslog_list.do%3Fsysparm_userpref_module%3Dab0b7690c0a8016400bdb8598ce01adf%26sysparm_query%3Dsys_created_onONToday%2540javascript%253Ags.daysAgoStart%25280%2529%2540javascript%253Ags.daysAgoEnd%25280%2529%255EEQ%26sysparm_order%3Dsys_created_on%26sysparm_order_direction%3Ddesc%26sysparm_clear_stack%3Dtrue'
+        `${process.env.SN_URL}/now/nav/ui/classic/params/target/syslog_list.do%3Fsysparm_userpref_module%3Dab0b7690c0a8016400bdb8598ce01adf%26sysparm_query%3Dsys_created_onONToday%2540javascript%253Ags.daysAgoStart%25280%2529%2540javascript%253Ags.daysAgoEnd%25280%2529%255EEQ%26sysparm_order%3Dsys_created_on%26sysparm_order_direction%3Ddesc%26sysparm_clear_stack%3Dtrue`
     );
 
     const logsFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
