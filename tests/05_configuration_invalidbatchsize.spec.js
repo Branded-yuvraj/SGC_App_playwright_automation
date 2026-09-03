@@ -1,6 +1,32 @@
 import { test, expect } from '@playwright/test';
 import 'dotenv/config';
 
+// Shared helper: navigate to the Configure Properties task, handling both the
+// "Task completed" and first-run "Task in progress" states. If it's in progress,
+// mark it complete right away since the Mark as Complete button lives on the same
+// page as the in-progress link.
+async function navigateToConfigureProperties(guidedSetupFrame) {
+    await guidedSetupFrame
+        .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
+        .click({ timeout: 160_000 });
+
+    const taskInProgressLink = guidedSetupFrame.getByRole('link', { name: ' Task in progress Configure' });
+    const taskCompletedLink = guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' });
+
+    if (await taskInProgressLink.isVisible().catch(() => false)) {
+        await taskInProgressLink.click();
+        await guidedSetupFrame
+            .getByRole('button', { name: 'Mark as Complete Click to mark complete task Configure Properties' })
+            .click();
+    } else {
+        await taskCompletedLink.click();
+    }
+
+    await guidedSetupFrame
+        .getByRole('link', { name: 'Configure Click to configure task Configure Properties' })
+        .click();
+}
+
 // Helper function to reset batch size back to 200 after each test
 async function resetBatchSize(page) {
     try {
@@ -17,13 +43,7 @@ async function resetBatchSize(page) {
         await page.waitForLoadState('networkidle');
 
         const guidedSetupFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
-        await guidedSetupFrame
-            .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
-            .click({ timeout: 160_000 });
-        await guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' }).click();
-        await guidedSetupFrame
-            .getByRole('link', { name: 'Configure Click to configure task Configure Properties' })
-            .click();
+        await navigateToConfigureProperties(guidedSetupFrame);
 
         const batchSizeField = guidedSetupFrame.locator('div:nth-child(15) > .col-md-9 > .bigid-value-width');
         await batchSizeField.waitFor({ state: 'visible', timeout: 30_000 });
@@ -54,13 +74,7 @@ test('TC-006: Batch size 0 or -ve should be rejected', async ({ page }) => {
     await page.waitForLoadState('networkidle');
 
     const guidedSetupFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
-    await guidedSetupFrame
-        .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
-        .click({ timeout: 160_000 });
-    await guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' }).click();
-    await guidedSetupFrame
-        .getByRole('link', { name: 'Configure Click to configure task Configure Properties' })
-        .click();
+    await navigateToConfigureProperties(guidedSetupFrame);
 
     // --- Enter invalid batch size ---
     const batchSizeField = guidedSetupFrame.locator('div:nth-child(15) > .col-md-9 > .bigid-value-width');
@@ -83,13 +97,7 @@ test('TC-007: Negative batch size should be rejected', async ({ page }) => {
     await page.waitForLoadState('networkidle');
 
     const guidedSetupFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
-    await guidedSetupFrame
-        .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
-        .click({ timeout: 160_000 });
-    await guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' }).click();
-    await guidedSetupFrame
-        .getByRole('link', { name: 'Configure Click to configure task Configure Properties' })
-        .click();
+    await navigateToConfigureProperties(guidedSetupFrame);
 
     // --- Enter invalid (negative) batch size ---
     const batchSizeField = guidedSetupFrame.locator('div:nth-child(15) > .col-md-9 > .bigid-value-width');

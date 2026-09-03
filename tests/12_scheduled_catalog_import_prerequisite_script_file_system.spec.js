@@ -56,4 +56,47 @@ test('Add Key Value to Storage File Share', async ({ page }) => {
   await frame.getByRole('button', { name: /Add selected items to the/ }).click();
 
   await frame.getByRole('button', { name: 'Save' }).click();
+  await page.waitForTimeout(5_000);
+
+
+
+  // --- Navigate to Guided Setup and mark "Create Key-Value Pair" as complete ---
+  await page.getByRole('menuitem', { name: 'All' }).click();
+
+  const clearFilterButton = page.getByRole('button', { name: 'Clear filter' });
+  if (await clearFilterButton.isVisible().catch(() => false)) {
+    await clearFilterButton.click();
+  }
+
+  await page.getByRole('textbox', { name: 'Enter search term to filter' }).fill('bigid');
+  await page.getByRole('link', { name: 'Setup 1 of' }).click();
+
+  const guidedSetupFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
+
+  await guidedSetupFrame
+    .getByRole('button', { name: 'Select chain item to goto Create Key-Value Pair' })
+    .click();
+
+  await page.waitForTimeout(2000);
+
+  const taskInProgressLink = guidedSetupFrame.getByRole('link', {
+    name: ' Task in progress Create Key-Value Related Entry for File System'
+  });
+
+  if (await taskInProgressLink.isVisible().catch(() => false)) {
+    await taskInProgressLink.click();
+
+    await page.waitForTimeout(2000);
+
+    await guidedSetupFrame
+      .getByRole('button', {
+        name: 'Mark as Complete Click to mark complete task Create Key-Value Related Entry for File System',
+        exact: true
+      })
+      .click();
+  } else {
+    console.log('Task already completed. Skipping Mark as Complete step.');
+  }
+
+
 });

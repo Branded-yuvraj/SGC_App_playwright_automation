@@ -29,7 +29,23 @@ for (const row of records) {
     await guidedSetupFrame
       .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
       .click({ timeout: 60_000 });
-    await guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' }).click();
+
+    // On the first run, "Configure Properties" hasn't been completed yet, so it shows
+    // up as "Task in progress" instead of "Task completed". Handle both cases. If it's
+    // in progress, mark it complete right away since the Mark as Complete button lives
+    // on the same page as the in-progress link.
+    const taskInProgressLink = guidedSetupFrame.getByRole('link', { name: ' Task in progress Configure' });
+    const taskCompletedLink = guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' });
+
+    if (await taskInProgressLink.isVisible().catch(() => false)) {
+      await taskInProgressLink.click();
+      await guidedSetupFrame
+        .getByRole('button', { name: 'Mark as Complete Click to mark complete task Configure Properties' })
+        .click();
+    } else {
+      await taskCompletedLink.click();
+    }
+
     await guidedSetupFrame
       .getByRole('link', { name: 'Configure Click to configure task Configure Properties' })
       .click();
@@ -37,14 +53,23 @@ for (const row of records) {
     // --- Fill in the Configuration Form ---
     await guidedSetupFrame.getByRole('textbox').nth(3).fill(''); // Export Data Sources List
     await guidedSetupFrame.getByRole('textbox').nth(2).fill(''); // Import Data Sources List
-    
+    await guidedSetupFrame.getByRole('textbox').nth(1).fill('SN_'); // always fill with SN_
+
     // Fill Classification Group dynamically from the current CSV row using exact column name
     await guidedSetupFrame.getByRole('textbox').first().fill(row.CLASSIFICATION_GROUP_NAME);
 
-    await guidedSetupFrame.getByText('Yes').first().click(); // SMB Configuration toggle -> Yes
-    await guidedSetupFrame.getByText('Yes').first().click(); // NFS Configuration toggle -> Yes
+    // Toggle SMB/NFS "use default" checkboxes by ID (the previous getByText('Yes')
+    // approach was unreliable — this matches the working pattern in
+    // 17_export_functionality_ss_apiscript.spec.js)
+    const useDefaultSmbCheckbox = guidedSetupFrame.locator('#use_default_smb_y');
+    await useDefaultSmbCheckbox.waitFor({ state: 'visible', timeout: 60_000 });
+    await useDefaultSmbCheckbox.check();
 
-    await guidedSetupFrame.getByRole('button', { name: 'Save and Validate' }).nth(1).click();
+    const useDefaultNfsCheckbox = guidedSetupFrame.locator('#use_default_nfs_config_y');
+    await useDefaultNfsCheckbox.waitFor({ state: 'visible', timeout: 60_000 });
+    await useDefaultNfsCheckbox.check();
+
+    await guidedSetupFrame.getByRole('toolbar').getByRole('button', { name: 'Save and Validate' }).click();
 
     // --- Assertion: Verify configuration saved successfully before clicking OK ---
     const successMessage = guidedSetupFrame.getByText('Application configuration saved successfully.');

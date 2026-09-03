@@ -88,7 +88,7 @@ async function checkTagOnRecord(page, sysId, expectedTagKey = EXPECTED_TAG_KEY, 
         if (kvData.result && kvData.result.length > 0) {
             for (const item of kvData.result) {
                 const matches = (item.key && item.key.includes(expectedTagKey)) ||
-                                 (item.name && item.name.includes(expectedTagKey));
+                    (item.name && item.name.includes(expectedTagKey));
                 if (!matches) continue;
                 tagExists = true;
                 if (baseline && item.sys_created_on) {
@@ -251,102 +251,112 @@ async function openFilteredCatalogLogs(page) {
     await messageSearch.press('Enter');
 
     await expect(messageSearch).toHaveValue('Service Graph Connector');
-    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.waitForLoadState('networkidle').catch(() => { });
 
     return logsFrame;
 }
 
 for (const row of records) {
-test(`TC-14: Data Catalog import for group (${row.CLASSIFICATION_GROUP_NAME})`, async ({ page }) => {
-    test.setTimeout(60 * 60_000);
+    test(`TC-14: Data Catalog import for group (${row.CLASSIFICATION_GROUP_NAME})`, async ({ page }) => {
+        test.setTimeout(60 * 60_000);
 
-    const classificationGroupName = row.CLASSIFICATION_GROUP_NAME;
+        const classificationGroupName = row.CLASSIFICATION_GROUP_NAME;
 
-    await page.goto(process.env.SN_URL);
+        await page.goto(process.env.SN_URL);
 
-    let logsFrame = await openFilteredCatalogLogs(page);
-    const baselineLink = logsFrame.getByRole('link', { name: TIMESTAMP_LINK_PATTERN }).first();
-    const hasExistingLogs = await baselineLink.isVisible({ timeout: 20_000 }).catch(() => false);
-    const baselineLogTimestamp = hasExistingLogs ? (await baselineLink.innerText()).trim() : null;
+        let logsFrame = await openFilteredCatalogLogs(page);
+        const baselineLink = logsFrame.getByRole('link', { name: TIMESTAMP_LINK_PATTERN }).first();
+        const hasExistingLogs = await baselineLink.isVisible({ timeout: 20_000 }).catch(() => false);
+        const baselineLogTimestamp = hasExistingLogs ? (await baselineLink.innerText()).trim() : null;
 
-    await navigateToAllMenuAndSearch(page, 'bigid', 'Setup 1 of');
+        await navigateToAllMenuAndSearch(page, 'bigid', 'Setup 1 of');
 
-    const guidedSetupFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
-    await guidedSetupFrame
-      .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
-      .click({ timeout: 60_000 });
-    await guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' }).click();
-    await guidedSetupFrame.getByRole('link', { name: 'Configure Click to configure task Configure Properties' }).click();
+        const guidedSetupFrame = page.locator('iframe[name="gsft_main"]').contentFrame();
+        await guidedSetupFrame
+            .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
+            .click({ timeout: 60_000 });
+        await guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' }).click();
+        await guidedSetupFrame.getByRole('link', { name: 'Configure Click to configure task Configure Properties' }).click();
 
-    const classificationField = guidedSetupFrame.getByRole('textbox').first();
-    await classificationField.waitFor({ state: 'visible', timeout: 30_000 });
-    await classificationField.click();
-    await classificationField.press('ControlOrMeta+a');
-    await classificationField.fill(classificationGroupName);
+        const classificationField = guidedSetupFrame.getByRole('textbox').first();
+        await classificationField.waitFor({ state: 'visible', timeout: 30_000 });
+        await classificationField.click();
+        await classificationField.press('ControlOrMeta+a');
+        await classificationField.fill(classificationGroupName);
 
-    await guidedSetupFrame.getByRole('toolbar').getByRole('button', { name: 'Save and Validate' }).click();
-    await guidedSetupFrame.getByRole('button', { name: 'OK', exact: true }).click();
+        await guidedSetupFrame.getByRole('toolbar').getByRole('button', { name: 'Save and Validate' }).click();
+        await guidedSetupFrame.getByRole('button', { name: 'OK', exact: true }).click();
 
-    await navigateToAllMenuAndSearch(page, 'bigid', 'Setup 1 of');
-    await guidedSetupFrame.getByRole('button', { name: 'Select chain item to goto Set' }).click();
-    await guidedSetupFrame.getByRole('link', { name: ' Task in progress Import Data Catalogs' }).click();
-    await guidedSetupFrame.getByRole('link', { name: 'Configure Click to configure task Import Data Catalogs' }).click();
+        await navigateToAllMenuAndSearch(page, 'bigid', 'Setup 1 of');
+        await guidedSetupFrame.getByRole('button', { name: 'Select chain item to goto Set' }).click();
+        // await guidedSetupFrame.getByRole('link', { name: ' Task in progress Import Data Catalogs' }).click();
+        // The Import Data Sources task may already show as completed (from a prior
+        // run) or still be in progress — handle both without marking it complete ourselves.
+        const importInProgressLink = guidedSetupFrame.getByRole('link', { name: ' Task in progress Import' });
+        const importCompletedLink = guidedSetupFrame.getByRole('link', { name: ' Task completed Import Data Catalogs' });
 
-    // Baseline for ALL table-driven checks below — captured right before we
-    // trigger the job, independent of the log's own baseline timestamp.
-    const catalogQueryBaselineIso = new Date().toISOString();
+        if (await importInProgressLink.isVisible().catch(() => false)) {
+            await importInProgressLink.click();
+        } else {
+            await importCompletedLink.click();
+        }
+        await guidedSetupFrame.getByRole('link', { name: 'Configure Click to configure task Import Data Catalogs' }).click();
 
-    await guidedSetupFrame.locator('#execute_bottom').click();
+        // Baseline for ALL table-driven checks below — captured right before we
+        // trigger the job, independent of the log's own baseline timestamp.
+        const catalogQueryBaselineIso = new Date().toISOString();
 
-    logsFrame = await openFilteredCatalogLogs(page);
+        await guidedSetupFrame.locator('#execute_bottom').click();
 
-    const MAX_POLLS = 60;
-    let newLogContent = '';
-    let foundEndMarker = false;
+        logsFrame = await openFilteredCatalogLogs(page);
 
-    for (let attempt = 1; attempt <= MAX_POLLS; attempt++) {
-        const logText = await logsFrame.locator('body').innerText();
+        const MAX_POLLS = 60;
+        let newLogContent = '';
+        let foundEndMarker = false;
 
-        const baselineIndex = baselineLogTimestamp ? logText.indexOf(baselineLogTimestamp) : logText.length;
-        newLogContent = baselineIndex >= 0 ? logText.slice(0, baselineIndex) : logText;
+        for (let attempt = 1; attempt <= MAX_POLLS; attempt++) {
+            const logText = await logsFrame.locator('body').innerText();
 
-        if (newLogContent.includes(END_MARKER)) {
-            foundEndMarker = true;
-            break;
+            const baselineIndex = baselineLogTimestamp ? logText.indexOf(baselineLogTimestamp) : logText.length;
+            newLogContent = baselineIndex >= 0 ? logText.slice(0, baselineIndex) : logText;
+
+            if (newLogContent.includes(END_MARKER)) {
+                foundEndMarker = true;
+                break;
+            }
+
+            console.log(`Poll ${attempt}/${MAX_POLLS}: end marker not found in new content yet, waiting 60s...`);
+            await page.waitForTimeout(60_000);
+            await page.reload();
+            await logsFrame.locator('body').waitFor({ state: 'visible', timeout: 60_000 });
         }
 
-        console.log(`Poll ${attempt}/${MAX_POLLS}: end marker not found in new content yet, waiting 60s...`);
-        await page.waitForTimeout(60_000);
-        await page.reload();
-        await logsFrame.locator('body').waitFor({ state: 'visible', timeout: 60_000 });
-    }
+        expect(foundEndMarker, 'Catalog import did not complete within the max wait time').toBeTruthy();
 
-    expect(foundEndMarker, 'Catalog import did not complete within the max wait time').toBeTruthy();
+        // Job confirmed complete — now discover results purely via table sweeps
+        // instead of parsing datasource lines out of the log.
 
-    // Job confirmed complete — now discover results purely via table sweeps
-    // instead of parsing datasource lines out of the log.
+        let totalStructured = 0;
+        for (const table of STRUCTURED_CATALOG_TABLES) {
+            const recs = await verifyStructuredCatalogTable(page, table, catalogQueryBaselineIso);
+            totalStructured += recs.length;
+        }
 
-    let totalStructured = 0;
-    for (const table of STRUCTURED_CATALOG_TABLES) {
-        const recs = await verifyStructuredCatalogTable(page, table, catalogQueryBaselineIso);
-        totalStructured += recs.length;
-    }
+        let totalUnstructured = 0;
+        for (const table of UNSTRUCTURED_INSTANCE_TABLES) {
+            const recs = await verifyUnstructuredInstanceTable(page, table, catalogQueryBaselineIso);
+            totalUnstructured += recs.length;
+        }
 
-    let totalUnstructured = 0;
-    for (const table of UNSTRUCTURED_INSTANCE_TABLES) {
-        const recs = await verifyUnstructuredInstanceTable(page, table, catalogQueryBaselineIso);
-        totalUnstructured += recs.length;
-    }
+        const infoObjects = await verifyInformationObjects(page, catalogQueryBaselineIso);
 
-    const infoObjects = await verifyInformationObjects(page, catalogQueryBaselineIso);
+        console.log(`\nSummary: ${totalStructured} structured catalog record(s), ${totalUnstructured} unstructured record(s) newly tagged, ${infoObjects.length} new Information Object(s).`);
 
-    console.log(`\nSummary: ${totalStructured} structured catalog record(s), ${totalUnstructured} unstructured record(s) newly tagged, ${infoObjects.length} new Information Object(s).`);
-
-    expect(
-        totalStructured + totalUnstructured,
-        'No new/updated catalog records found across structured or unstructured tables since baseline'
-    ).toBeGreaterThan(0);
-});
+        expect(
+            totalStructured + totalUnstructured,
+            'No new/updated catalog records found across structured or unstructured tables since baseline'
+        ).toBeGreaterThan(0);
+    });
 }
 
 

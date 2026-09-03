@@ -33,7 +33,23 @@ async function navigateToConfigureProperties(page) {
     await guidedSetupFrame
         .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
         .click({ timeout: 60_000 });
-    await guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' }).click();
+
+    // On the first run, "Configure Properties" hasn't been completed yet, so it shows
+    // up as "Task in progress" instead of "Task completed". Handle both cases. If it's
+    // in progress, mark it complete right away since the Mark as Complete button lives
+    // on the same page as the in-progress link.
+    const taskInProgressLink = guidedSetupFrame.getByRole('link', { name: ' Task in progress Configure' });
+    const taskCompletedLink = guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' });
+
+    if (await taskInProgressLink.isVisible().catch(() => false)) {
+        await taskInProgressLink.click();
+        await guidedSetupFrame
+            .getByRole('button', { name: 'Mark as Complete Click to mark complete task Configure Properties' })
+            .click();
+    } else {
+        await taskCompletedLink.click();
+    }
+
     await guidedSetupFrame
         .getByRole('link', { name: 'Configure Click to configure task Configure Properties' })
         .click();

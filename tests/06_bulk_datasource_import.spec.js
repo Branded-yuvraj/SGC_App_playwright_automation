@@ -31,7 +31,7 @@ const masterTableMapping = {
     'ORACLE': 'cmdb_ci_db_ora_instance',
     '_AWSORACLE': 'cmdb_ci_db_ora_instance',
     'SYBASE': 'cmdb_ci_db_syb_instance',
-    
+
     // Cloud & Storage Types (Script 08 - Default Yes)
     'S3': 'cmdb_ci_aws_s3_endpoint',
     'S3-V2': 'cmdb_ci_aws_s3_endpoint',
@@ -43,6 +43,27 @@ const masterTableMapping = {
     // Storage File Share Custom Table (Script 09 - Toggle No)
     'STORAGE_FILESHARE': 'cmdb_ci_storage_fileshare'
 };
+async function navigateToConfigureProperties(guidedSetupFrame) {
+    await guidedSetupFrame
+        .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
+        .click({ timeout: 160_000 });
+
+    const taskInProgressLink = guidedSetupFrame.getByRole('link', { name: ' Task in progress Configure' });
+    const taskCompletedLink = guidedSetupFrame.getByRole('link', { name: ' Task completed Configure Properties' });
+
+    if (await taskInProgressLink.isVisible().catch(() => false)) {
+        await taskInProgressLink.click();
+        await guidedSetupFrame
+            .getByRole('button', { name: 'Mark as Complete Click to mark complete task Configure Properties' })
+            .click();
+    } else {
+        await taskCompletedLink.click();
+    }
+
+    await guidedSetupFrame
+        .getByRole('link', { name: 'Configure Click to configure task Configure Properties' })
+        .click();
+}
 
 // 5. Register the batch test case for Scripts 07, 08, and 09
 test('TC-Batch: Scripts 07, 08 & 09 Data Source Configuration and Verification', async ({ page }) => {
@@ -66,23 +87,9 @@ test('TC-Batch: Scripts 07, 08 & 09 Data Source Configuration and Verification',
     await page.getByRole('textbox', { name: 'Enter search term to filter' }).fill('bigid');
     await page.getByRole('link', { name: 'Setup 1 of' }).click();
     await page.waitForTimeout(2_000);
+    await navigateToConfigureProperties(guidedSetupFrame);
+    
 
-    // Navigate through Guided Setup items with safe waiting
-    await guidedSetupFrame
-        .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
-        .waitFor({ state: 'visible', timeout: 30_000 });
-
-    await guidedSetupFrame
-        .getByRole('button', { name: 'Select chain item to goto Configure Connection and Properties' })
-        .click();
-
-    await guidedSetupFrame
-        .getByRole('link', { name: ' Task completed Configure Properties' })
-        .click();
-
-    await guidedSetupFrame
-        .getByRole('link', { name: 'Configure Click to configure task Configure Properties' })
-        .click();
 
     // Fill the configuration input box with the full comma-separated list
     await guidedSetupFrame.getByRole('textbox').nth(2).fill(allDataSources);
@@ -169,7 +176,7 @@ test('TC-Batch: Scripts 07, 08 & 09 Data Source Configuration and Verification',
     for (const row of records) {
         const testAssetName = row.IMPORT_JOB_RDB_DATASOURCE || row.IMPORT_JOB_LDC_DATASOURCE || row.IMPORT_JOB_SS_DATASOURCE;
         const assetType = (row.IMPORT_JOB_RDB_TYPE || row.IMPORT_JOB_LDC_TYPE || row.IMPORT_JOB_SS_TYPE || 'MYSQL').toUpperCase();
-        
+
         if (!testAssetName) continue;
 
         let targetTableName;
@@ -181,7 +188,7 @@ test('TC-Batch: Scripts 07, 08 & 09 Data Source Configuration and Verification',
         }
 
         console.log(`[API Automation] Verifying "${testAssetName}" on table "${targetTableName}" (Script: ${row.SCRIPT_NO}, Type: ${assetType})...`);
-        
+
         const instanceCreated = await page.evaluate(async ({ tableName, instanceName }) => {
             const token = window.g_ck || (window.top && window.top.g_ck) || '';
             const headers = {
@@ -195,7 +202,7 @@ test('TC-Batch: Scripts 07, 08 & 09 Data Source Configuration and Verification',
                 credentials: 'include',
                 headers
             });
-            
+
             const data = await res.json();
             return !!(data.result && data.result.length > 0);
         }, { tableName: targetTableName, instanceName: testAssetName });

@@ -56,6 +56,7 @@ export, which needs invented/synthetic CI names that don't exist yet in BigID. M
 rows by hand directly in the CSV. The script does produce them in servicenow however their configuration must be present in the CSV
 
 `SCRIPT_NO` legend:
+Before running any script please ensure that the scope is set to Service Graph Connector for BIG ID
 
 | SCRIPT_NO | Test file | Purpose |
 | 00 | `00_login_and_save_session` | Auth setup (runs automatically first) |

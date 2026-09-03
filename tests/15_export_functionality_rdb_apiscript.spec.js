@@ -228,7 +228,15 @@ test(`Server and Instance export workflow via API (${row.EXPORT_SERVER_INSTANCE}
     await gsftMain
         .getByRole('button', { name: 'Select chain item to goto Configure the Scheduled Job to Export Data Sources' })
         .click();
-    await gsftMain.getByRole('link', { name: ' Task in progress Export' }).click();
+    // await gsftMain.getByRole('link', { name: ' Task in progress Export' }).click();
+    const exportInProgressLink = gsftMain.getByRole('link', { name: ' Task in progress Export' });
+    const exportCompletedLink = gsftMain.getByRole('link', { name: ' Task completed Export Data' });
+
+        if (await exportInProgressLink.isVisible().catch(() => false)) {
+            await exportInProgressLink.click();
+        } else {
+            await exportCompletedLink.click();
+        }
     await gsftMain.getByRole('link', { name: 'Configure Click to configure' }).click();
 
     await page.goto(`${snUrl}/now/nav/ui/classic/params/target/sysauto_script.do%3Fsys_id%3D90fdf7e99395421047d3b0a08bba108f`);

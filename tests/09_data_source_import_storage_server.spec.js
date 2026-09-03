@@ -170,9 +170,18 @@ test(`TC-09: API-Driven Storage Server Creation with IP/DNS Validation & Dynamic
         .getByRole('button', { name: 'Select chain item to goto Set' })
         .click();
 
-    await guidedSetupFrame
-        .getByRole('link', { name: ' Task in progress Import Data Sources' })
-        .click();
+    // await guidedSetupFrame
+    //     .getByRole('link', { name: ' Task in progress Import Data Sources' })
+    //     .click();
+    const importInProgressLink = guidedSetupFrame.getByRole('link', { name: ' Task in progress Import Data Sources' });
+    const importCompletedLink = guidedSetupFrame.getByRole('link', { name: ' Task completed Import Data' });
+
+        if (await importInProgressLink.isVisible().catch(() => false)) {
+            await importInProgressLink.click();
+        } else {
+            await importCompletedLink.click();
+        }
+
     await guidedSetupFrame
         .getByRole('link', { name: 'Configure Click to configure task Import Data Sources' })
         .click();

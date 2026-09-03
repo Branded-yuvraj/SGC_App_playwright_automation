@@ -182,9 +182,17 @@ for (const row of records) {
             .getByRole('button', { name: 'Select chain item to goto Set' })
             .click();
 
-        await guidedSetupFrameAfterSave
-            .getByRole('link', { name: ' Task in progress Import Data Sources' })
-            .click();
+        // await guidedSetupFrameAfterSave
+        //     .getByRole('link', { name: ' Task in progress Import Data Sources' })
+        //     .click();
+        const importInProgressLink = guidedSetupFrameAfterSave.getByRole('link', { name: ' Task in progress Import Data Sources' });
+        const importCompletedLink = guidedSetupFrameAfterSave.getByRole('link', { name: ' Task completed Import Data' });
+
+        if (await importInProgressLink.isVisible().catch(() => false)) {
+            await importInProgressLink.click();
+        } else {
+            await importCompletedLink.click();
+        }
 
         await guidedSetupFrameAfterSave
             .getByRole('link', { name: 'Configure Click to configure task Import Data Sources' })
