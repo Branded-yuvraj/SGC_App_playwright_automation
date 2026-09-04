@@ -33,9 +33,20 @@ test('Add Key Value to File System', async ({ page }) => {
   await fileSystemOption.waitFor({ state: 'visible', timeout: 15_000 });
   await fileSystemOption.click();
 
-  await frame
-    .getByRole('button', { name: /^File System, Contains/ })
-    .click();
+  const fileSystemButton = frame.getByRole('button', { name: /^File System(,|$)/ });
+
+  if (!(await fileSystemButton.isVisible().catch(() => false))) {
+    // Neither "File System" nor "File System, Contains..." matched — log
+    // every button whose accessible name mentions "File System" so we can
+    // see the real text this instance renders instead of guessing blindly.
+    const candidates = await frame.getByRole('button', { name: /File System/i }).all();
+    console.log(`No match for "File System" — found ${candidates.length} candidate button(s):`);
+    for (const el of candidates) {
+      console.log(' ->', JSON.stringify(await el.getAttribute('aria-label')));
+    }
+  }
+
+  await fileSystemButton.click({ timeout: 15_000 });
 
   await frame
     .getByRole('button', { name: 'Show information for Class Info - Identification Rule' })
