@@ -85,13 +85,47 @@ async function getSystemToken() {
     return data.systemToken;
 }
 
+/**
+ * Fetches connections from BigID, preferring a server-side type filter so we
+ * don't pull down every connection just to discard most of them client-side.
+ *
+ * The exact `filter` grammar BigID accepts on GET /api/v1/ds-connections isn't
+ * guaranteed across tenant versions, so this tries the filtered request first
+ * and transparently falls back to an unfiltered fetch (relying on the existing
+ * RDB_TYPES/LDC_TYPES check in main()) if the filter is rejected or the
+ * response doesn't look right. That client-side check is left in place either
+ * way as a safety net.
+ */
 async function fetchAllConnections(token) {
-    const res = await fetch(`${BIGID_ROOT_URL}/api/v1/ds-connections`, {
-        headers: { Authorization: token },
-    });
-    if (!res.ok) throw new Error(`ds-connections list failed: ${res.status} ${await res.text()}`);
-    const data = await res.json();
-    return data.data.ds_connections;
+    const allTypes = [...RDB_TYPES, ...LDC_TYPES];
+    // BigID's `filter` param is parsed as JSON (Mongo-style aggregation match),
+    // not a text expression - e.g. {"type":{"$in":["rdb-mysql", ...]}}.
+    const filterValue = JSON.stringify({ type: { $in: allTypes } });
+    const filteredUrl = `${BIGID_ROOT_URL}/api/v1/ds-connections?filter=${encodeURIComponent(filterValue)}`;
+
+    try {
+        console.log('Attempting server-side type filter on ds-connections...');
+        const res = await fetch(filteredUrl, { headers: { Authorization: token } });
+        if (!res.ok) {
+            throw new Error(`Filtered request failed: ${res.status} ${await res.text()}`);
+        }
+        const data = await res.json();
+        const connections = data?.data?.ds_connections;
+        if (!Array.isArray(connections)) {
+            throw new Error('Filtered response missing data.ds_connections array');
+        }
+        console.log(`Server-side filter returned ${connections.length} connection(s).`);
+        return connections;
+    } catch (err) {
+        console.warn(`  [WARN] Server-side filter unavailable or failed (${err.message}).`);
+        console.warn('  [WARN] Falling back to fetching all connections and filtering client-side.');
+        const res = await fetch(`${BIGID_ROOT_URL}/api/v1/ds-connections`, {
+            headers: { Authorization: token },
+        });
+        if (!res.ok) throw new Error(`ds-connections list failed: ${res.status} ${await res.text()}`);
+        const data = await res.json();
+        return data.data.ds_connections;
+    }
 }
 
 async function fetchConnectionDetail(name, token) {
