@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import 'dotenv/config';
 
-test('Add Key Value to Storage File Share', async ({ page }) => {
+test('Add Key Value to File System', async ({ page }) => {
   test.setTimeout(120_000);
 
   await page.goto(process.env.SN_URL);
@@ -23,10 +23,8 @@ test('Add Key Value to Storage File Share', async ({ page }) => {
     .getByRole('searchbox', { name: 'Search CI Classes' })
     .fill('file system');
 
-  await frame.getByRole('option', { name: 'File System', exact: true }).click();
+  await frame.getByRole('option', { name: /^File System$/i }).click();
 
-  // "Contains N CIs" count varies — matching just the class name prefix,
-  // not the exact count
   await frame
     .getByRole('button', { name: /^File System, Contains/ })
     .click();
