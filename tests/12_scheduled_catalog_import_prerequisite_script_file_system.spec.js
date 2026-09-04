@@ -23,7 +23,15 @@ test('Add Key Value to File System', async ({ page }) => {
     .getByRole('searchbox', { name: 'Search CI Classes' })
     .fill('file system');
 
-  await frame.getByRole('option', { name: /^File System$/i }).click();
+  // The class search results list re-renders via ng-repeat/filter as you type,
+  // and with more candidate matches (File System, NAS/NFS/SMB File system,
+  // File System Snapshot) it can take a moment to settle before the exact
+  // option is stably clickable.
+  await page.waitForTimeout(2_000);
+
+  const fileSystemOption = frame.getByRole('option', { name: /^File System$/i });
+  await fileSystemOption.waitFor({ state: 'visible', timeout: 15_000 });
+  await fileSystemOption.click();
 
   await frame
     .getByRole('button', { name: /^File System, Contains/ })
