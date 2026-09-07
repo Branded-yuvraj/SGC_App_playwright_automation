@@ -292,7 +292,7 @@ for (const row of records) {
         // await guidedSetupFrame.getByRole('link', { name: ' Task in progress Import Data Catalogs' }).click();
         // The Import Data Sources task may already show as completed (from a prior
         // run) or still be in progress — handle both without marking it complete ourselves.
-        const importInProgressLink = guidedSetupFrame.getByRole('link', { name: ' Task in progress Import' });
+        const importInProgressLink = guidedSetupFrame.getByRole('link', { name: ' Task in progress Import Data Catalogs' });
         const importCompletedLink = guidedSetupFrame.getByRole('link', { name: ' Task completed Import Data Catalogs' });
 
         if (await importInProgressLink.isVisible().catch(() => false)) {
