@@ -281,8 +281,8 @@ for (const row of records) {
             .getByRole('button', { name: 'Select chain item to goto Configure the Scheduled Job to Export Data Sources' })
             .click();
         // await guidedSetupFrame.getByRole('link', { name: 'Task in progress Export' }).click();
-        const exportInProgressLink = gsftMain.getByRole('link', { name: ' Task in progress Export' });
-        const exportCompletedLink = gsftMain.getByRole('link', { name: ' Task completed Export Data' });
+        const exportInProgressLink = guidedSetupFrame.getByRole('link', { name: ' Task in progress Export' });
+        const exportCompletedLink = guidedSetupFrame.getByRole('link', { name: ' Task completed Export Data' });
 
         if (await exportInProgressLink.isVisible().catch(() => false)) {
             await exportInProgressLink.click();
