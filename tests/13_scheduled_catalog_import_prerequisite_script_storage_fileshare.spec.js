@@ -88,9 +88,17 @@ test('Add Key Value to Storage File Share', async ({ page }) => {
 
     await guidedSetupFrame
       .getByRole('button', {
-        name: 'Mark as Complete Click to'
+        name: 'Mark as Complete Click to mark complete task Create Key-Value Related Entry for Storage File Share'
       })
       .click();
+    await expect(
+      guidedSetupFrame.getByRole('button', {
+        name: 'Mark as Incomplete Click to mark incomplete task Create Key-Value Related Entry for Storage File Share',
+        exact: true
+      })
+    ).toBeVisible();
+
+
   } else {
     console.log('Task already completed. Skipping Mark as Complete step.');
   }

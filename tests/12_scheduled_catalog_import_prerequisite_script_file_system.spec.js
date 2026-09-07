@@ -111,6 +111,13 @@ test('Add Key Value to File System', async ({ page }) => {
         exact: true
       })
       .click();
+
+    await expect(
+      guidedSetupFrame.getByRole('button', {
+        name: 'Mark as Incomplete Click to mark incomplete task Create Key-Value Related Entry for File System',
+        exact: true
+      })
+    ).toBeVisible();
   } else {
     console.log('Task already completed. Skipping Mark as Complete step.');
   }
