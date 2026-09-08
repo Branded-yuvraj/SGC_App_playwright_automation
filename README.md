@@ -1,9 +1,9 @@
 # SGC for BigID — Playwright Smoke Test Suite
 
-Automated end-to-end smoke tests for the Service Graph Connector (SGC) for BigID ServiceNow
+Automated core functionality smoke tests for the Service Graph Connector (SGC) for BigID ServiceNow
 application. Covers credentials setup, configuration validation, scheduled data source imports
 (RDB, Logical Datacenter, and Storage Server variants), data catalog import verification, and
-data source export — driven by a CSV of real and synthetic test data so the suite scales to
+data source export , driven by a CSV of realdata so the suite scales to
 however many data sources you're testing against, without editing code per run.
 
 ## 1. Getting the project
